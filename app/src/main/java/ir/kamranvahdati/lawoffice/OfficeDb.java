@@ -3,6 +3,7 @@ package ir.kamranvahdati.lawoffice;
 import android.content.ContentValues;
 import android.content.Context;
 import android.database.Cursor;
+import android.database.DatabaseUtils;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
 
@@ -17,8 +18,8 @@ import java.util.List;
 import java.util.Locale;
 
 final class OfficeDb extends SQLiteOpenHelper {
-    static final String DATABASE_NAME = "law_office_preview_v4.db";
-    private static final int VERSION = 5;
+    static final String DATABASE_NAME = "law_office_demo_v7.db";
+    private static final int VERSION = 7;
 
     OfficeDb(Context context) {
         super(context, DATABASE_NAME, null, VERSION);
@@ -41,6 +42,7 @@ final class OfficeDb extends SQLiteOpenHelper {
                 "reference TEXT,stage TEXT,client_id INTEGER,fee_agreed INTEGER NOT NULL DEFAULT 0," +
                 "agreement_notes TEXT,status TEXT NOT NULL DEFAULT 'active',category TEXT," +
                 "case_number TEXT,archive_number TEXT,branch TEXT,subject TEXT,claim_text TEXT," +
+                "authority_type TEXT,province TEXT,judicial_city TEXT," +
                 "evidence TEXT,summary TEXT,financial_notes TEXT,contract_notes TEXT," +
                 "created_at TEXT,updated_at TEXT," +
                 "FOREIGN KEY(client_id) REFERENCES clients(id) ON DELETE SET NULL)");
@@ -48,6 +50,10 @@ final class OfficeDb extends SQLiteOpenHelper {
                 "kind TEXT NOT NULL,category TEXT NOT NULL,amount INTEGER NOT NULL DEFAULT 0," +
                 "entry_date TEXT,paid_by TEXT,description TEXT,created_at TEXT," +
                 "FOREIGN KEY(case_id) REFERENCES cases(id) ON DELETE CASCADE)");
+        db.execSQL("CREATE TABLE worklogs(id INTEGER PRIMARY KEY AUTOINCREMENT,case_id INTEGER NOT NULL," +
+                "client_id INTEGER,action_type TEXT NOT NULL,action_date TEXT,description TEXT,created_at TEXT," +
+                "FOREIGN KEY(case_id) REFERENCES cases(id) ON DELETE CASCADE," +
+                "FOREIGN KEY(client_id) REFERENCES clients(id) ON DELETE SET NULL)");
         seed(db);
     }
 
@@ -69,6 +75,15 @@ final class OfficeDb extends SQLiteOpenHelper {
             db.execSQL("UPDATE cases SET status='active' WHERE status IS NULL");
             db.execSQL("UPDATE cases SET category='حقوقی' WHERE category IS NULL");
         }
+        if (oldVersion < 7) {
+            addColumn(db, "cases", "authority_type TEXT");
+            addColumn(db, "cases", "province TEXT");
+            addColumn(db, "cases", "judicial_city TEXT");
+            db.execSQL("CREATE TABLE IF NOT EXISTS worklogs(id INTEGER PRIMARY KEY AUTOINCREMENT,case_id INTEGER NOT NULL," +
+                    "client_id INTEGER,action_type TEXT NOT NULL,action_date TEXT,description TEXT,created_at TEXT," +
+                    "FOREIGN KEY(case_id) REFERENCES cases(id) ON DELETE CASCADE," +
+                    "FOREIGN KEY(client_id) REFERENCES clients(id) ON DELETE SET NULL)");
+        }
     }
 
     private void addColumn(SQLiteDatabase db, String table, String definition) {
@@ -77,43 +92,99 @@ final class OfficeDb extends SQLiteOpenHelper {
     }
 
     private void seed(SQLiteDatabase db) {
-        String today = JalaliDate.today().value();
-        ContentValues client = new ContentValues();
-        client.put("name", "موکل آزمایشی");
-        client.put("national_id", "۰۰۰۰۰۰۰۰۰۰");
-        client.put("father_name", "نام پدر نمونه");
-        client.put("birth_date", "۱۳۶۰/۰۱/۰۱");
-        client.put("phone", "۰۹۱۲۰۰۰۰۰۰۰");
-        client.put("address", "نشانی آزمایشی");
-        client.put("notes", "صرفاً اطلاعات نمونه");
-        client.put("created_at", now());
-        long clientId = db.insert("clients", null, client);
+        String[] first = {"آرمان","بهار","پارسا","ترانه","سامان","درسا","کیان","مهسا","نوید","هلیا"};
+        String[] last = {"آزمایشی","نمونه‌پور","فرضی‌نژاد","داده‌آرا","آزمون‌خواه","نمونه‌جو","فرضی‌فر","داده‌ور","آزمون‌پور","نمونه‌یار"};
+        String[] categories = {"کیفری","حقوقی","انقلاب","خانواده","دیوان عدالت اداری","نظامی","سایر"};
+        String[] subjects = {"مطالبه وجه","الزام به ایفای تعهد","اعتراض به رأی","اختلاف خانوادگی","شکایت اداری","دفاع کیفری","اختلاف قراردادی"};
+        String[] expenseCategories = {"هزینه دادرسی","کارشناسی","تمبر و خدمات قضایی","هتل","بلیط هواپیما","تاکسی و فرودگاه","سایر"};
+        long[] clientIds = new long[100];
+        long[] caseIds = new long[100];
+        JalaliDate today = JalaliDate.today();
 
-        ContentValues record = new ContentValues();
-        record.put("title", "پرونده آزمایشی ملکی");
-        record.put("case_number", "۱۴۰۵۰۰۰۰۰۰۰۰۰۰۱");
-        record.put("archive_number", "۰۵۰۰۰۱");
-        record.put("reference", "دادگستری نمونه");
-        record.put("branch", "شعبه نمونه حقوقی");
-        record.put("stage", "کارشناسی");
-        record.put("client_id", clientId);
-        record.put("fee_agreed", 500000000L);
-        record.put("agreement_notes", "پرداخت حق‌الوکاله در دو مرحله");
-        record.put("contract_notes", "قرارداد وکالت آزمایشی");
-        record.put("status", "active");
-        record.put("category", "حقوقی");
-        record.put("subject", "الزام به ایفای تعهد");
-        record.put("claim_text", "خواسته آزمایشی");
-        record.put("evidence", "قرارداد و اسناد آزمایشی");
-        record.put("summary", "شرح مختصر نمونه برای بازبینی امکانات برنامه");
-        record.put("financial_notes", "اطلاعات مالی آزمایشی");
-        record.put("created_at", now());
-        db.insert("cases", null, record);
+        for (int i=0;i<100;i++) {
+            ContentValues v=new ContentValues();
+            v.put("name",first[i%first.length]+" "+last[(i/first.length)%last.length]+" «آزمایشی "+fa(i+1)+"»");
+            v.put("national_id",String.format(Locale.US,"%010d",8000000000L+i));
+            v.put("father_name","نام پدر فرضی "+fa((i%20)+1));
+            v.put("birth_date",String.format(Locale.US,"13%02d/%02d/%02d",50+(i%40),(i%12)+1,(i%28)+1));
+            v.put("phone",String.format(Locale.US,"0912%07d",i+1));
+            v.put("address","نشانی کاملاً فرضی، شهر نمونه، خیابان آزمایش، پلاک "+fa(i+1));
+            v.put("notes","این رکورد صرفاً برای آزمون نرم‌افزار است و شخص واقعی نیست.");
+            v.put("created_at",now()); v.put("updated_at",now());
+            clientIds[i]=db.insertOrThrow("clients",null,v);
+        }
 
-        addTask(db, "بررسی نظریه کارشناسی", "پرونده آزمایشی ملکی", today,
-                "۰۹:۰۰", "فوری", "بررسی و تهیه یادداشت");
-        addTask(db, "مرور پیش‌نویس لایحه", "پرونده آزمایشی ملکی", today,
-                "۱۲:۰۰", "عادی", "نسخه نهایی آماده شود");
+        for (int i=0;i<100;i++) {
+            ContentValues v=new ContentValues(); String cat=categories[i%categories.length];
+            v.put("title","پرونده "+cat+" آزمایشی شماره "+fa(i+1));
+            v.put("case_number",String.format(Locale.US,"1405%012d",i+1));
+            v.put("archive_number",String.format(Locale.US,"%06d",5000+i));
+            v.put("reference","مجتمع قضایی فرضی "+fa((i%8)+1));
+            v.put("authority_type",i%3==0?"دادگاه":i%3==1?"دادسرا":"شورای حل اختلاف");
+            v.put("province",i%2==0?"تهران":"البرز");
+            v.put("judicial_city",i%2==0?"تهران":"کرج");
+            v.put("branch","شعبه "+fa((i%50)+1)+" نمونه");
+            v.put("stage",i%3==0?"بدوی":i%3==1?"تجدیدنظر":"اجرای احکام");
+            v.put("client_id",clientIds[i]);
+            v.put("fee_agreed",100000000L+(i*5000000L));
+            v.put("agreement_notes","توافق فرضی پرداخت حق‌الوکاله در "+fa((i%3)+1)+" مرحله");
+            v.put("contract_notes","عقد وکالت آزمایشی؛ فاقد هرگونه اثر واقعی و حقوقی.");
+            v.put("status",i%4==0?"closed":"active");
+            v.put("category",cat); v.put("subject",subjects[i%subjects.length]);
+            v.put("claim_text","خواسته یا شکایت فرضی شماره "+fa(i+1));
+            v.put("evidence","سند فرضی، گواهی نمونه و مکاتبات آزمایشی");
+            v.put("summary","شرح مختصر کاملاً ساختگی برای سنجش نمایش اطلاعات پرونده.");
+            v.put("financial_notes","یادداشت مالی آزمایشی شماره "+fa(i+1));
+            v.put("created_at",now()); v.put("updated_at",now());
+            caseIds[i]=db.insertOrThrow("cases",null,v);
+        }
+
+        for (int i=0;i<100;i++) {
+            ContentValues v=new ContentValues(); int day=(i%JalaliDate.monthLength(today.year,today.month))+1;
+            v.put("title",i%4==0?"مهلت فوری آزمایشی "+fa(i+1):"برنامه کاری آزمایشی "+fa(i+1));
+            v.put("case_name","پرونده آزمایشی شماره "+fa((i%100)+1));
+            v.put("due_date",String.format(Locale.US,"%04d/%02d/%02d",today.year,today.month,day));
+            v.put("due_time",String.format(Locale.US,"%02d:%02d",8+(i%10),(i%4)*15));
+            v.put("priority",i%4==0?"فوری":i%4==1?"عادی":"کم");
+            v.put("done",i%10==0?1:0); v.put("status",i%10==0?"done":i%10==1?"deferred":"open");
+            v.put("notes","توضیح فرضی برای آزمایش برنامه، یادآوری و تقویم.");
+            v.put("created_at",now()); v.put("updated_at",now()); db.insertOrThrow("tasks",null,v);
+        }
+
+        for (int i=0;i<100;i++) {
+            ContentValues v=new ContentValues(); boolean payment=i%2==0;
+            v.put("case_id",caseIds[i]); v.put("kind",payment?"payment":"expense");
+            v.put("category",payment?"حق‌الوکاله":expenseCategories[i%expenseCategories.length]);
+            v.put("amount",payment?25000000L+(i*1000000L):5000000L+(i*250000L));
+            v.put("entry_date",String.format(Locale.US,"%04d/%02d/%02d",today.year,today.month,(i%28)+1));
+            v.put("paid_by",payment?"موکل":i%4==1?"وکیل":"موکل");
+            v.put("description","عملیات مالی کاملاً فرضی شماره "+fa(i+1));
+            v.put("created_at",now()); db.insertOrThrow("ledger",null,v);
+        }
+        for (int i=0;i<100;i++) {
+            ContentValues v=new ContentValues();
+            v.put("case_id",caseIds[i]); v.put("client_id",clientIds[i]);
+            v.put("action_type",i%4==0?"مطالعه پرونده":i%4==1?"مراجعه به شعبه":i%4==2?"پیگیری پرونده":"ارسال لایحه");
+            v.put("action_date",String.format(Locale.US,"%04d/%02d/%02d",today.year,today.month,(i%28)+1));
+            v.put("description","گزارش اقدام کاملاً فرضی شماره "+fa(i+1)); v.put("created_at",now());
+            db.insertOrThrow("worklogs",null,v);
+        }
+        verifyDemoData(db);
+    }
+
+    private void verifyDemoData(SQLiteDatabase db) {
+        for (String table:new String[]{"clients","cases","tasks","ledger","worklogs"})
+            if (DatabaseUtils.queryNumEntries(db,table)!=100)
+                throw new IllegalStateException("آزمون تعداد رکوردهای "+table+" ناموفق بود");
+        Cursor fk=db.rawQuery("PRAGMA foreign_key_check",null);
+        boolean invalid=fk.moveToFirst(); fk.close();
+        if(invalid) throw new IllegalStateException("آزمون ارتباط داده‌ها ناموفق بود");
+    }
+
+    private static String fa(int number) {
+        return String.valueOf(number).replace('0','۰').replace('1','۱').replace('2','۲')
+                .replace('3','۳').replace('4','۴').replace('5','۵').replace('6','۶')
+                .replace('7','۷').replace('8','۸').replace('9','۹');
     }
 
     long addClient(String name, String nationalId, String father, String birth,
@@ -163,6 +234,22 @@ final class OfficeDb extends SQLiteOpenHelper {
         getWritableDatabase().insertOrThrow("ledger", null, v);
     }
 
+    void addWorkLog(long caseId,long clientId,String type,String date,String description) {
+        ContentValues v=new ContentValues(); v.put("case_id",caseId);
+        if(clientId>0)v.put("client_id",clientId); else v.putNull("client_id");
+        v.put("action_type",type); v.put("action_date",date); v.put("description",description); v.put("created_at",now());
+        getWritableDatabase().insertOrThrow("worklogs",null,v);
+    }
+
+    List<WorkLogRecord> workLogs(Long caseId,Long clientId) {
+        ArrayList<WorkLogRecord> result=new ArrayList<>(); StringBuilder w=new StringBuilder(" WHERE 1=1"); ArrayList<String> a=new ArrayList<>();
+        if(caseId!=null){w.append(" AND w.case_id=?");a.add(String.valueOf(caseId));}
+        if(clientId!=null){w.append(" AND w.client_id=?");a.add(String.valueOf(clientId));}
+        Cursor c=getReadableDatabase().rawQuery("SELECT w.id,w.case_id,w.client_id,w.action_type,w.action_date,w.description,cs.title,cl.name FROM worklogs w LEFT JOIN cases cs ON cs.id=w.case_id LEFT JOIN clients cl ON cl.id=w.client_id"+w+" ORDER BY w.action_date DESC,w.id DESC",a.toArray(new String[0]));
+        while(c.moveToNext())result.add(new WorkLogRecord(c.getLong(0),c.getLong(1),c.getLong(2),c.getString(3),c.getString(4),c.getString(5),c.getString(6),c.getString(7)));
+        c.close();return result;
+    }
+
     List<ClientRecord> clients() {
         ArrayList<ClientRecord> result = new ArrayList<>();
         Cursor c = getReadableDatabase().rawQuery("SELECT cl.id,cl.name,cl.national_id," +
@@ -186,7 +273,7 @@ final class OfficeDb extends SQLiteOpenHelper {
         Cursor c = getReadableDatabase().rawQuery("SELECT c.id,c.title,c.reference,c.stage," +
                 "COALESCE(c.client_id,0),cl.name,c.fee_agreed,c.agreement_notes,c.status," +
                 "c.category,c.case_number,c.archive_number,c.branch,c.subject,c.claim_text," +
-                "c.evidence,c.summary,c.financial_notes,c.contract_notes FROM cases c " +
+                "c.evidence,c.summary,c.financial_notes,c.contract_notes,c.authority_type,c.province,c.judicial_city FROM cases c " +
                 "LEFT JOIN clients cl ON cl.id=c.client_id" + where + " ORDER BY c.id DESC",
                 args.toArray(new String[0]));
         while (c.moveToNext()) result.add(caseFrom(c));
@@ -212,6 +299,7 @@ final class OfficeDb extends SQLiteOpenHelper {
     int countCases(String status) { return scalar("SELECT COUNT(*) FROM cases WHERE status=?", status); }
     int countClients() { return scalar("SELECT COUNT(*) FROM clients", null); }
     int countToday(String date) { return scalar("SELECT COUNT(*) FROM tasks WHERE due_date=? AND done=0", date); }
+    int countAllTasks() { return scalar("SELECT COUNT(*) FROM tasks", null); }
     int taskCountInMonth(String prefix) { return scalar("SELECT COUNT(*) FROM tasks WHERE due_date LIKE ?", prefix + "%"); }
 
     private int scalar(String sql, String arg) {
@@ -243,7 +331,7 @@ final class OfficeDb extends SQLiteOpenHelper {
     String exportJson() throws Exception {
         JSONObject root = new JSONObject(); root.put("format", "KLO-2"); root.put("created", now());
         JSONObject tables = new JSONObject();
-        for (String table : new String[]{"clients", "tasks", "cases", "ledger"})
+        for (String table : new String[]{"clients", "tasks", "cases", "ledger", "worklogs"})
             tables.put(table, dump(table));
         root.put("tables", tables); return root.toString();
     }
@@ -254,10 +342,10 @@ final class OfficeDb extends SQLiteOpenHelper {
         JSONObject tables = root.getJSONObject("tables"); SQLiteDatabase db = getWritableDatabase();
         db.beginTransaction();
         try {
-            db.delete("ledger", null, null); db.delete("cases", null, null);
+            db.delete("worklogs", null, null); db.delete("ledger", null, null); db.delete("cases", null, null);
             db.delete("tasks", null, null); db.delete("clients", null, null);
-            for (String table : new String[]{"clients", "tasks", "cases", "ledger"})
-                restore(db, table, tables.getJSONArray(table));
+            for (String table : new String[]{"clients", "tasks", "cases", "ledger", "worklogs"})
+                if(tables.has(table))restore(db, table, tables.getJSONArray(table));
             db.setTransactionSuccessful();
         } finally { db.endTransaction(); }
     }
@@ -288,10 +376,11 @@ final class OfficeDb extends SQLiteOpenHelper {
         v.put("status", c.status); v.put("category", c.category); v.put("case_number", c.caseNumber);
         v.put("archive_number", c.archiveNumber); v.put("branch", c.branch); v.put("subject", c.subject);
         v.put("claim_text", c.claimText); v.put("evidence", c.evidence); v.put("summary", c.summary);
-        v.put("financial_notes", c.financialNotes); v.put("contract_notes", c.contractNotes); return v;
+        v.put("financial_notes", c.financialNotes); v.put("contract_notes", c.contractNotes);
+        v.put("authority_type",c.authorityType); v.put("province",c.province); v.put("judicial_city",c.judicialCity); return v;
     }
 
-    private CaseRecord caseFrom(Cursor c) { return new CaseRecord(c.getLong(0), c.getString(1), c.getString(2), c.getString(3), c.getLong(4), c.getString(5), c.getLong(6), c.getString(7), c.getString(8), c.getString(9), c.getString(10), c.getString(11), c.getString(12), c.getString(13), c.getString(14), c.getString(15), c.getString(16), c.getString(17), c.getString(18)); }
+    private CaseRecord caseFrom(Cursor c) { return new CaseRecord(c.getLong(0), c.getString(1), c.getString(2), c.getString(3), c.getLong(4), c.getString(5), c.getLong(6), c.getString(7), c.getString(8), c.getString(9), c.getString(10), c.getString(11), c.getString(12), c.getString(13), c.getString(14), c.getString(15), c.getString(16), c.getString(17), c.getString(18),c.getString(19),c.getString(20),c.getString(21)); }
     private TaskRecord taskFrom(Cursor c) { return new TaskRecord(c.getLong(0), c.getString(1), c.getString(2), c.getString(3), c.getString(4), c.getString(5), c.getInt(6), c.getString(7), c.getString(8)); }
     private static String now() { return new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(new Date()); }
 
@@ -301,11 +390,12 @@ final class OfficeDb extends SQLiteOpenHelper {
         @Override public String toString(){return name;}
     }
     static final class CaseRecord {
-        long id,clientId,feeAgreed; String title,reference,stage,clientName,agreementNotes,status,category,caseNumber,archiveNumber,branch,subject,claimText,evidence,summary,financialNotes,contractNotes;
+        long id,clientId,feeAgreed; String title,reference,stage,clientName,agreementNotes,status,category,caseNumber,archiveNumber,branch,subject,claimText,evidence,summary,financialNotes,contractNotes,authorityType,province,judicialCity;
         CaseRecord(){status="active";category="حقوقی";}
-        CaseRecord(long id,String title,String reference,String stage,long clientId,String clientName,long fee,String agreement,String status,String category,String caseNumber,String archiveNumber,String branch,String subject,String claimText,String evidence,String summary,String financialNotes,String contractNotes){this.id=id;this.title=title;this.reference=reference;this.stage=stage;this.clientId=clientId;this.clientName=clientName;this.feeAgreed=fee;this.agreementNotes=agreement;this.status=status;this.category=category;this.caseNumber=caseNumber;this.archiveNumber=archiveNumber;this.branch=branch;this.subject=subject;this.claimText=claimText;this.evidence=evidence;this.summary=summary;this.financialNotes=financialNotes;this.contractNotes=contractNotes;}
+        CaseRecord(long id,String title,String reference,String stage,long clientId,String clientName,long fee,String agreement,String status,String category,String caseNumber,String archiveNumber,String branch,String subject,String claimText,String evidence,String summary,String financialNotes,String contractNotes,String authorityType,String province,String judicialCity){this.id=id;this.title=title;this.reference=reference;this.stage=stage;this.clientId=clientId;this.clientName=clientName;this.feeAgreed=fee;this.agreementNotes=agreement;this.status=status;this.category=category;this.caseNumber=caseNumber;this.archiveNumber=archiveNumber;this.branch=branch;this.subject=subject;this.claimText=claimText;this.evidence=evidence;this.summary=summary;this.financialNotes=financialNotes;this.contractNotes=contractNotes;this.authorityType=authorityType;this.province=province;this.judicialCity=judicialCity;}
     }
     static final class TaskRecord { final long id; final String title,caseName,date,time,priority,status,notes; final int done; TaskRecord(long id,String title,String caseName,String date,String time,String priority,int done,String status,String notes){this.id=id;this.title=title;this.caseName=caseName;this.date=date;this.time=time;this.priority=priority;this.done=done;this.status=status;this.notes=notes;} }
     static final class LedgerRecord { final long id,amount; final String kind,category,date,paidBy,description; LedgerRecord(long id,String kind,String category,long amount,String date,String paidBy,String description){this.id=id;this.kind=kind;this.category=category;this.amount=amount;this.date=date;this.paidBy=paidBy;this.description=description;} }
     static final class AccountSummary { long agreed,received,reimbursed,expenses,lawyerPaid,debt,credit; }
+    static final class WorkLogRecord { final long id,caseId,clientId; final String type,date,description,caseTitle,clientName; WorkLogRecord(long id,long caseId,long clientId,String type,String date,String description,String caseTitle,String clientName){this.id=id;this.caseId=caseId;this.clientId=clientId;this.type=type;this.date=date;this.description=description;this.caseTitle=caseTitle;this.clientName=clientName;} }
 }
