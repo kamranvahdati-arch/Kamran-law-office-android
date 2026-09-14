@@ -33,10 +33,47 @@ public class MainActivity extends Activity {
     @Override
     public void onCreate(Bundle state) {
         super.onCreate(state);
+        try {
+            startApplication();
+        } catch (Throwable firstError) {
+            // This public preview contains sample data only, so a damaged or
+            // incompatible preview database can safely be recreated.
+            try {
+                deleteDatabase(Db.DATABASE_NAME);
+                startApplication();
+            } catch (Throwable finalError) {
+                showStartupError(finalError);
+            }
+        }
+    }
+
+    private void startApplication() {
         getWindow().setStatusBarColor(NAVY);
         db = new Db(this);
         buildShell();
         showDashboard();
+    }
+
+    private void showStartupError(Throwable error) {
+        LinearLayout fallback = new LinearLayout(this);
+        fallback.setOrientation(LinearLayout.VERTICAL);
+        fallback.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        fallback.setGravity(Gravity.CENTER);
+        fallback.setPadding(dp(24), dp(24), dp(24), dp(24));
+        fallback.setBackgroundColor(Color.WHITE);
+
+        TextView heading = text("برنامه با خطا روبه‌رو شد", 20, INK);
+        heading.setTypeface(null, 1);
+        heading.setGravity(Gravity.CENTER);
+        fallback.addView(heading);
+
+        TextView message = text("لطفاً از این صفحه عکس بگیرید و برای پشتیبانی ارسال کنید.\\n\\n"
+                + error.getClass().getSimpleName() + ": " + safe(error.getMessage()),
+                13, Color.rgb(150, 40, 40));
+        message.setGravity(Gravity.CENTER);
+        message.setPadding(0, dp(18), 0, 0);
+        fallback.addView(message);
+        setContentView(fallback);
     }
 
     private void buildShell() {
@@ -796,8 +833,10 @@ public class MainActivity extends Activity {
     }
 
     static class Db extends SQLiteOpenHelper {
+        static final String DATABASE_NAME = "law_office_preview_v4.db";
+
         Db(Context context) {
-            super(context, "law_office.db", null, 3);
+            super(context, DATABASE_NAME, null, 3);
         }
 
         @Override
