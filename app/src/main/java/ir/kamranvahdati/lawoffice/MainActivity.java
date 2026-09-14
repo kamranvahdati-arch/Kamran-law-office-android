@@ -85,8 +85,12 @@ public class MainActivity extends Activity {
         header.setPadding(dp(20), dp(13), dp(20), dp(13));
         header.setBackgroundColor(NAVY);
 
-        TextView mark = text("⚖", 27, Color.rgb(233, 201, 145));
-        header.addView(mark, lp(dp(48), dp(48)));
+        TextView menu = text("⋮", 30, Color.WHITE);
+        menu.setContentDescription("منوی اصلی");
+        menu.setGravity(Gravity.CENTER);
+        menu.setPadding(dp(6), 0, dp(6), 0);
+        menu.setOnClickListener(this::showMainMenu);
+        header.addView(menu, lp(dp(48), dp(48)));
 
         LinearLayout names = column();
         names.setPadding(dp(12), 0, 0, 0);
@@ -111,25 +115,35 @@ public class MainActivity extends Activity {
         scroll.addView(page);
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
 
-        LinearLayout nav = row();
-        nav.setPadding(dp(4), dp(5), dp(4), dp(6));
-        nav.setBackgroundColor(Color.WHITE);
-        String[] labels = {"میز کار", "موکلان", "کارها", "تقویم", "پرونده‌ها", "تنظیمات"};
-        String[] icons = {"⌂", "♙", "✓", "□", "▣", "⚙"};
-        for (int i = 0; i < labels.length; i++) {
-            final int destination = i;
-            LinearLayout item = column();
-            item.setGravity(Gravity.CENTER);
-            TextView icon = text(icons[i], 18, i == 0 ? BLUE : MUTED);
-            TextView label = text(labels[i], 9, i == 0 ? BLUE : MUTED);
-            label.setGravity(Gravity.CENTER);
-            item.addView(icon);
-            item.addView(label);
-            item.setOnClickListener(v -> navigate(destination));
-            nav.addView(item, new LinearLayout.LayoutParams(0, dp(58), 1));
-        }
-        root.addView(nav);
         setContentView(root);
+        applySafeArea(root);
+    }
+
+    private void applySafeArea(View container) {
+        container.setPadding(0, dp(6), 0, dp(6));
+        container.setOnApplyWindowInsetsListener((view, insets) -> {
+            int top = Math.max(dp(6), insets.getSystemWindowInsetTop() + dp(6));
+            int bottom = Math.max(dp(6), insets.getSystemWindowInsetBottom() + dp(6));
+            view.setPadding(0, top, 0, bottom);
+            return insets;
+        });
+        container.requestApplyInsets();
+    }
+
+    private void showMainMenu(View anchor) {
+        PopupMenu popup = new PopupMenu(this, anchor);
+        String[] labels = {
+                "میز کار", "موکلان", "کارها",
+                "تقویم", "پرونده‌ها", "تنظیمات"
+        };
+        for (int i = 0; i < labels.length; i++) {
+            popup.getMenu().add(0, i, i, labels[i]);
+        }
+        popup.setOnMenuItemClickListener(item -> {
+            navigate(item.getItemId());
+            return true;
+        });
+        popup.show();
     }
 
     private void navigate(int n) {
