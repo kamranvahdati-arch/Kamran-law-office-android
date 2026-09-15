@@ -3,9 +3,8 @@ package ir.kamranvahdati.lawoffice;
 import android.content.ContentValues;
 import android.content.Context;
 import android.database.Cursor;
-import android.database.DatabaseUtils;
-import android.database.sqlite.SQLiteDatabase;
-import android.database.sqlite.SQLiteOpenHelper;
+import net.zetetic.database.sqlcipher.SQLiteDatabase;
+import net.zetetic.database.sqlcipher.SQLiteOpenHelper;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -21,16 +20,19 @@ import java.util.HashSet;
 import java.util.TimeZone;
 
 final class OfficeDb extends SQLiteOpenHelper {
-    static final String DATABASE_NAME = "law_office_demo_v7.db";
+    static final String LEGACY_NAME = "law_office_demo_v7.db";
+    static final String ENCRYPTED_NAME = "law_office_encrypted_v9.db";
+    static final String DATABASE_NAME = ENCRYPTED_NAME;
     private static final int VERSION = 9;
 
     OfficeDb(Context context) {
-        super(context, DATABASE_NAME, null, VERSION);
+        super(context, DATABASE_NAME, DatabaseKey.read(context), null, VERSION, 0, null, null, false);
+        System.loadLibrary("sqlcipher");
     }
 
     @Override public void onConfigure(SQLiteDatabase db) {
         super.onConfigure(db);
-        db.setForeignKeyConstraintsEnabled(true);
+        db.execSQL("PRAGMA foreign_keys=ON");
     }
 
     @Override public void onCreate(SQLiteDatabase db) {
@@ -228,12 +230,14 @@ final class OfficeDb extends SQLiteOpenHelper {
 
     private void verifyDemoData(SQLiteDatabase db) {
         for (String table:new String[]{"clients","cases","tasks","ledger","worklogs"})
-            if (DatabaseUtils.queryNumEntries(db,table)!=100)
+            if (countRows(db,table)!=100)
                 throw new IllegalStateException("آزمون تعداد رکوردهای "+table+" ناموفق بود");
         Cursor fk=db.rawQuery("PRAGMA foreign_key_check",null);
         boolean invalid=fk.moveToFirst(); fk.close();
         if(invalid) throw new IllegalStateException("آزمون ارتباط داده‌ها ناموفق بود");
     }
+
+    private int countRows(SQLiteDatabase db,String table){try(Cursor c=db.rawQuery("SELECT COUNT(*) FROM "+table,null)){return c.moveToFirst()?c.getInt(0):0;}}
 
     private static String fa(int number) {
         return String.valueOf(number).replace('0','۰').replace('1','۱').replace('2','۲')

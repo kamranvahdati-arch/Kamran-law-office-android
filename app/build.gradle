@@ -1,5 +1,10 @@
 plugins { id "com.android.application" }
 
+dependencies {
+    implementation 'net.zetetic:sqlcipher-android:4.19.0@aar'
+    implementation 'androidx.sqlite:sqlite:2.7.0'
+}
+
 android {
     namespace "ir.kamranvahdati.lawoffice"
     compileSdk 35
