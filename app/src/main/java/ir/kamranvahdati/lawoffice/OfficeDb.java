@@ -19,7 +19,7 @@ import java.util.Locale;
 
 final class OfficeDb extends SQLiteOpenHelper {
     static final String DATABASE_NAME = "law_office_demo_v7.db";
-    private static final int VERSION = 7;
+    private static final int VERSION = 8;
 
     OfficeDb(Context context) {
         super(context, DATABASE_NAME, null, VERSION);
@@ -54,6 +54,7 @@ final class OfficeDb extends SQLiteOpenHelper {
                 "client_id INTEGER,action_type TEXT NOT NULL,action_date TEXT,description TEXT,created_at TEXT," +
                 "FOREIGN KEY(case_id) REFERENCES cases(id) ON DELETE CASCADE," +
                 "FOREIGN KEY(client_id) REFERENCES clients(id) ON DELETE SET NULL)");
+        createScheduleTables(db);
         seed(db);
     }
 
@@ -84,6 +85,21 @@ final class OfficeDb extends SQLiteOpenHelper {
                     "FOREIGN KEY(case_id) REFERENCES cases(id) ON DELETE CASCADE," +
                     "FOREIGN KEY(client_id) REFERENCES clients(id) ON DELETE SET NULL)");
         }
+        if (oldVersion < 8) createScheduleTables(db);
+    }
+
+    private void createScheduleTables(SQLiteDatabase db) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS appointments(id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                "kind TEXT NOT NULL,person_name TEXT NOT NULL,contact_phone TEXT,client_id INTEGER,case_id INTEGER," +
+                "visit_date TEXT NOT NULL,start_time TEXT NOT NULL,end_time TEXT NOT NULL,place TEXT,notes TEXT," +
+                "created_at TEXT,FOREIGN KEY(client_id) REFERENCES clients(id) ON DELETE SET NULL," +
+                "FOREIGN KEY(case_id) REFERENCES cases(id) ON DELETE SET NULL)");
+        db.execSQL("CREATE TABLE IF NOT EXISTS deadlines(id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                "case_id INTEGER NOT NULL,title TEXT NOT NULL,event_date TEXT NOT NULL,due_date TEXT NOT NULL," +
+                "duration_days INTEGER NOT NULL,notes TEXT,completed INTEGER NOT NULL DEFAULT 0,created_at TEXT," +
+                "FOREIGN KEY(case_id) REFERENCES cases(id) ON DELETE CASCADE)");
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_appointments_date ON appointments(visit_date,start_time)");
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_deadlines_due ON deadlines(completed,due_date)");
     }
 
     private void addColumn(SQLiteDatabase db, String table, String definition) {
@@ -300,6 +316,8 @@ final class OfficeDb extends SQLiteOpenHelper {
     int countClients() { return scalar("SELECT COUNT(*) FROM clients", null); }
     int countToday(String date) { return scalar("SELECT COUNT(*) FROM tasks WHERE due_date=? AND done=0", date); }
     int countAllTasks() { return scalar("SELECT COUNT(*) FROM tasks", null); }
+    int countAppointments(String date) { return scalar("SELECT COUNT(*) FROM appointments WHERE visit_date=?", date); }
+    int countDeadlines(String date) { return scalar("SELECT COUNT(*) FROM deadlines WHERE completed=0 AND due_date<=?", date); }
     int taskCountInMonth(String prefix) { return scalar("SELECT COUNT(*) FROM tasks WHERE due_date LIKE ?", prefix + "%"); }
 
     private int scalar(String sql, String arg) {
@@ -328,10 +346,33 @@ final class OfficeDb extends SQLiteOpenHelper {
         a.debt = Math.max(0, net); a.credit = Math.max(0, -net); return a;
     }
 
+    long addAppointment(String kind,String person,String phone,Long clientId,Long caseId,String date,String start,String end,String place,String notes) {
+        ContentValues v=new ContentValues();v.put("kind",kind);v.put("person_name",person);v.put("contact_phone",phone);
+        if(clientId!=null)v.put("client_id",clientId);if(caseId!=null)v.put("case_id",caseId);
+        v.put("visit_date",date);v.put("start_time",start);v.put("end_time",end);v.put("place",place);v.put("notes",notes);v.put("created_at",now());
+        return getWritableDatabase().insertOrThrow("appointments",null,v);
+    }
+
+    List<AppointmentRecord> appointments(String date){ArrayList<AppointmentRecord> list=new ArrayList<>();
+        String sql="SELECT a.id,a.kind,a.person_name,a.contact_phone,a.visit_date,a.start_time,a.end_time,a.place,a.notes,COALESCE(a.client_id,0),COALESCE(a.case_id,0),c.title FROM appointments a LEFT JOIN cases c ON c.id=a.case_id"+(date==null?"":" WHERE a.visit_date=?")+" ORDER BY a.visit_date,a.start_time,a.id";
+        Cursor c=getReadableDatabase().rawQuery(sql,date==null?null:new String[]{date});
+        while(c.moveToNext())list.add(new AppointmentRecord(c.getLong(0),c.getString(1),c.getString(2),c.getString(3),c.getString(4),c.getString(5),c.getString(6),c.getString(7),c.getString(8),c.getLong(9),c.getLong(10),c.getString(11)));c.close();return list;
+    }
+
+    long addDeadline(long caseId,String title,String eventDate,String dueDate,int duration,String notes){ContentValues v=new ContentValues();v.put("case_id",caseId);v.put("title",title);v.put("event_date",eventDate);v.put("due_date",dueDate);v.put("duration_days",duration);v.put("notes",notes);v.put("created_at",now());return getWritableDatabase().insertOrThrow("deadlines",null,v);}
+    void completeDeadline(long id){ContentValues v=new ContentValues();v.put("completed",1);getWritableDatabase().update("deadlines",v,"id=?",new String[]{String.valueOf(id)});}
+    List<DeadlineRecord> deadlines(Long caseId,boolean openOnly){ArrayList<DeadlineRecord> list=new ArrayList<>();ArrayList<String> args=new ArrayList<>();StringBuilder w=new StringBuilder(" WHERE 1=1");if(caseId!=null){w.append(" AND d.case_id=?");args.add(String.valueOf(caseId));}if(openOnly)w.append(" AND d.completed=0");Cursor c=getReadableDatabase().rawQuery("SELECT d.id,d.case_id,d.title,d.event_date,d.due_date,d.duration_days,d.notes,d.completed,c.title,c.case_number,cl.name FROM deadlines d JOIN cases c ON c.id=d.case_id LEFT JOIN clients cl ON cl.id=c.client_id"+w+" ORDER BY d.due_date,d.id",args.toArray(new String[0]));while(c.moveToNext())list.add(new DeadlineRecord(c.getLong(0),c.getLong(1),c.getString(2),c.getString(3),c.getString(4),c.getInt(5),c.getString(6),c.getInt(7),c.getString(8),c.getString(9),c.getString(10)));c.close();return list;}
+
+    String clientFinancialText(long clientId){StringBuilder b=new StringBuilder();for(CaseRecord c:cases(null,"همه",clientId))b.append(caseFinancialText(c));return b.toString();}
+    String caseFinancialText(CaseRecord c){StringBuilder b=new StringBuilder();AccountSummary s=summary(c);b.append(c.title).append(" / ").append(c.caseNumber).append("\nتوافق حق‌الوکاله: ").append(s.agreed).append(" ریال؛ دریافتی: ").append(s.received).append(" ریال\nهزینه‌ها: ").append(s.expenses).append(" ریال؛ هزینه پرداختی وکیل: ").append(s.lawyerPaid).append(" ریال؛ بدهی: ").append(s.debt).append(" ریال\n");
+        for(LedgerRecord l:ledger(c.id))b.append(l.date).append(" | ").append(l.category).append(" | ").append(l.amount).append(" ریال | پرداخت‌کننده: ").append(l.paidBy).append(" | ").append(l.description).append("\n");b.append("\n");return b.toString();}
+
+    String performanceText(Long caseId,Long clientId){StringBuilder b=new StringBuilder();ArrayList<Long> ids=new ArrayList<>();for(CaseRecord c:cases(null,"همه",clientId))if(caseId==null||c.id==caseId){ids.add(c.id);b.append("پرونده: ").append(c.title).append(" | شماره: ").append(c.caseNumber).append(" | موکل: ").append(c.clientName).append("\n");for(WorkLogRecord x:workLogs(c.id,null))b.append(x.date).append(" | اقدام: ").append(x.type).append(" | ").append(x.description).append("\n");for(LedgerRecord l:ledger(c.id))if("expense".equals(l.kind)&&"وکیل".equals(l.paidBy))b.append(l.date).append(" | هزینه پرداختی وکیل: ").append(l.category).append(" | ").append(l.amount).append(" ریال | ").append(l.description).append("\n");b.append("\n");}return b.toString();}
+
     String exportJson() throws Exception {
         JSONObject root = new JSONObject(); root.put("format", "KLO-2"); root.put("created", now());
         JSONObject tables = new JSONObject();
-        for (String table : new String[]{"clients", "tasks", "cases", "ledger", "worklogs"})
+        for (String table : new String[]{"clients", "tasks", "cases", "ledger", "worklogs", "appointments", "deadlines"})
             tables.put(table, dump(table));
         root.put("tables", tables); return root.toString();
     }
@@ -342,9 +383,9 @@ final class OfficeDb extends SQLiteOpenHelper {
         JSONObject tables = root.getJSONObject("tables"); SQLiteDatabase db = getWritableDatabase();
         db.beginTransaction();
         try {
-            db.delete("worklogs", null, null); db.delete("ledger", null, null); db.delete("cases", null, null);
+            db.delete("worklogs", null, null); db.delete("deadlines",null,null);db.delete("appointments",null,null); db.delete("ledger", null, null); db.delete("cases", null, null);
             db.delete("tasks", null, null); db.delete("clients", null, null);
-            for (String table : new String[]{"clients", "tasks", "cases", "ledger", "worklogs"})
+            for (String table : new String[]{"clients", "tasks", "cases", "ledger", "worklogs", "appointments", "deadlines"})
                 if(tables.has(table))restore(db, table, tables.getJSONArray(table));
             db.setTransactionSuccessful();
         } finally { db.endTransaction(); }
@@ -398,4 +439,6 @@ final class OfficeDb extends SQLiteOpenHelper {
     static final class LedgerRecord { final long id,amount; final String kind,category,date,paidBy,description; LedgerRecord(long id,String kind,String category,long amount,String date,String paidBy,String description){this.id=id;this.kind=kind;this.category=category;this.amount=amount;this.date=date;this.paidBy=paidBy;this.description=description;} }
     static final class AccountSummary { long agreed,received,reimbursed,expenses,lawyerPaid,debt,credit; }
     static final class WorkLogRecord { final long id,caseId,clientId; final String type,date,description,caseTitle,clientName; WorkLogRecord(long id,long caseId,long clientId,String type,String date,String description,String caseTitle,String clientName){this.id=id;this.caseId=caseId;this.clientId=clientId;this.type=type;this.date=date;this.description=description;this.caseTitle=caseTitle;this.clientName=clientName;} }
+    static final class AppointmentRecord {final long id,clientId,caseId;final String kind,person,phone,date,start,end,place,notes,caseTitle;AppointmentRecord(long id,String kind,String person,String phone,String date,String start,String end,String place,String notes,long clientId,long caseId,String caseTitle){this.id=id;this.kind=kind;this.person=person;this.phone=phone;this.date=date;this.start=start;this.end=end;this.place=place;this.notes=notes;this.clientId=clientId;this.caseId=caseId;this.caseTitle=caseTitle;}}
+    static final class DeadlineRecord {final long id,caseId;final String title,eventDate,dueDate,notes,caseTitle,caseNumber,clientName;final int days,completed;DeadlineRecord(long id,long caseId,String title,String eventDate,String dueDate,int days,String notes,int completed,String caseTitle,String caseNumber,String clientName){this.id=id;this.caseId=caseId;this.title=title;this.eventDate=eventDate;this.dueDate=dueDate;this.days=days;this.notes=notes;this.completed=completed;this.caseTitle=caseTitle;this.caseNumber=caseNumber;this.clientName=clientName;}}
 }
