@@ -35,6 +35,14 @@ jobs:
           name: Kamran-Law-Office-APK
           path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
+      - name: Exercise encrypted migration on an emulator
+        if: github.event_name == 'pull_request'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          script: gradle connectedDebugAndroidTest
       - name: Publish APK plus ZIP
         if: github.ref == 'refs/heads/main'
         env:
