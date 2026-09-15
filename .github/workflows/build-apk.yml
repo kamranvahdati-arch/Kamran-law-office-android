@@ -42,7 +42,12 @@ jobs:
           api-level: 35
           arch: x86_64
           target: google_apis
-          script: gradle connectedDebugAndroidTest
+          script: |
+            adb logcat -c
+            gradle connectedDebugAndroidTest --stacktrace || {
+              adb logcat -d -v time -t 4000 | grep -E 'AndroidRuntime|FATAL EXCEPTION|Process: ir.kamranvahdati|sqlcipher|zetetic|EncryptedMigrationTest|JUnit' | tail -n 160
+              exit 1
+            }
       - name: Publish APK plus ZIP
         if: github.ref == 'refs/heads/main'
         env:

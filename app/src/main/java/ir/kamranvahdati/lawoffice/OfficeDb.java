@@ -354,7 +354,7 @@ final class OfficeDb extends SQLiteOpenHelper {
     List<TaskRecord> tasksForDate(String date) {
         ArrayList<TaskRecord> result = new ArrayList<>();
         Cursor c = getReadableDatabase().rawQuery("SELECT t.id,t.title,COALESCE(cs.title,cl.name,t.case_name),t.due_date,t.due_time," +
-                "t.priority,t.done,t.status,t.notes FROM tasks t LEFT JOIN cases cs ON cs.id=t.case_id LEFT JOIN clients cl ON cl.id=t.client_id WHERE t.deleted_at IS NULL AND t.due_date=? ORDER BY t.done,CASE t.priority " +
+                "t.priority,t.done,t.status,t.notes,t.kind,t.end_time,t.place,COALESCE(t.case_id,0),COALESCE(t.client_id,0) FROM tasks t LEFT JOIN cases cs ON cs.id=t.case_id LEFT JOIN clients cl ON cl.id=t.client_id WHERE t.deleted_at IS NULL AND t.due_date=? ORDER BY t.done,CASE t.priority " +
                 "WHEN 'فوری' THEN 0 ELSE 1 END,due_time", new String[]{date});
         while (c.moveToNext()) result.add(taskFrom(c)); c.close(); return result;
     }
@@ -362,7 +362,7 @@ final class OfficeDb extends SQLiteOpenHelper {
     List<TaskRecord> openTasks(int limit) {
         ArrayList<TaskRecord> result = new ArrayList<>();
         Cursor c = getReadableDatabase().rawQuery("SELECT t.id,t.title,COALESCE(cs.title,cl.name,t.case_name),t.due_date,t.due_time," +
-                "t.priority,t.done,t.status,t.notes FROM tasks t LEFT JOIN cases cs ON cs.id=t.case_id LEFT JOIN clients cl ON cl.id=t.client_id WHERE t.deleted_at IS NULL AND t.done=0 ORDER BY t.due_date," +
+                "t.priority,t.done,t.status,t.notes,t.kind,t.end_time,t.place,COALESCE(t.case_id,0),COALESCE(t.client_id,0) FROM tasks t LEFT JOIN cases cs ON cs.id=t.case_id LEFT JOIN clients cl ON cl.id=t.client_id WHERE t.deleted_at IS NULL AND t.done=0 ORDER BY t.due_date," +
                 "CASE priority WHEN 'فوری' THEN 0 ELSE 1 END LIMIT " + limit, null);
         while (c.moveToNext()) result.add(taskFrom(c)); c.close(); return result;
     }
@@ -497,7 +497,7 @@ final class OfficeDb extends SQLiteOpenHelper {
     }
 
     private CaseRecord caseFrom(Cursor c) { CaseRecord r=new CaseRecord(c.getLong(0), c.getString(1), c.getString(2), c.getString(3), c.getLong(4), c.getString(5), c.getLong(6), c.getString(7), c.getString(8), c.getString(9), c.getString(10), c.getString(11), c.getString(12), c.getString(13), c.getString(14), c.getString(15), c.getString(16), c.getString(17), c.getString(18),c.getString(19),c.getString(20),c.getString(21));r.contractNumber=c.getString(22);r.contractDate=c.getString(23);return r; }
-    private TaskRecord taskFrom(Cursor c) { return new TaskRecord(c.getLong(0), c.getString(1), c.getString(2), c.getString(3), c.getString(4), c.getString(5), c.getInt(6), c.getString(7), c.getString(8)); }
+    private TaskRecord taskFrom(Cursor c) { return new TaskRecord(c.getLong(0), c.getString(1), c.getString(2), c.getString(3), c.getString(4), c.getString(5), c.getInt(6), c.getString(7), c.getString(8),c.getString(9),c.getString(10),c.getString(11),c.getLong(12),c.getLong(13)); }
     private static String now() { SimpleDateFormat utc=new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",Locale.US);utc.setTimeZone(TimeZone.getTimeZone("UTC"));return utc.format(new Date()); }
 
     static final class ClientRecord {
@@ -510,7 +510,7 @@ final class OfficeDb extends SQLiteOpenHelper {
         CaseRecord(){status="active";category="حقوقی";}
         CaseRecord(long id,String title,String reference,String stage,long clientId,String clientName,long fee,String agreement,String status,String category,String caseNumber,String archiveNumber,String branch,String subject,String claimText,String evidence,String summary,String financialNotes,String contractNotes,String authorityType,String province,String judicialCity){this.id=id;this.title=title;this.reference=reference;this.stage=stage;this.clientId=clientId;this.clientName=clientName;this.feeAgreed=fee;this.agreementNotes=agreement;this.status=status;this.category=category;this.caseNumber=caseNumber;this.archiveNumber=archiveNumber;this.branch=branch;this.subject=subject;this.claimText=claimText;this.evidence=evidence;this.summary=summary;this.financialNotes=financialNotes;this.contractNotes=contractNotes;this.authorityType=authorityType;this.province=province;this.judicialCity=judicialCity;}
     }
-    static final class TaskRecord { final long id; final String title,caseName,date,time,priority,status,notes; final int done; TaskRecord(long id,String title,String caseName,String date,String time,String priority,int done,String status,String notes){this.id=id;this.title=title;this.caseName=caseName;this.date=date;this.time=time;this.priority=priority;this.done=done;this.status=status;this.notes=notes;} }
+    static final class TaskRecord { final long id,caseId,clientId; final String title,caseName,date,time,priority,status,notes,kind,endTime,place; final int done; TaskRecord(long id,String title,String caseName,String date,String time,String priority,int done,String status,String notes,String kind,String endTime,String place,long caseId,long clientId){this.id=id;this.title=title;this.caseName=caseName;this.date=date;this.time=time;this.priority=priority;this.done=done;this.status=status;this.notes=notes;this.kind=kind;this.endTime=endTime;this.place=place;this.caseId=caseId;this.clientId=clientId;} }
     static final class LedgerRecord { final long id,amount; final String kind,category,date,paidBy,description; LedgerRecord(long id,String kind,String category,long amount,String date,String paidBy,String description){this.id=id;this.kind=kind;this.category=category;this.amount=amount;this.date=date;this.paidBy=paidBy;this.description=description;} }
     static final class InstallmentRecord {final long id,amount,paid;final String title,dueDate;InstallmentRecord(long id,String title,long amount,String dueDate,long paid){this.id=id;this.title=title;this.amount=amount;this.dueDate=dueDate;this.paid=paid;}}
     static final class ReminderRecord {final long id,at;final int advanceDays;final String kind;ReminderRecord(long id,long at,int advanceDays,String kind){this.id=id;this.at=at;this.advanceDays=advanceDays;this.kind=kind;}}

@@ -46,10 +46,13 @@ public class EncryptedMigrationTest {
         long installment=db.addInstallment(1,"قسط نمونه",1000,"1405/07/01");
         db.payInstallment(installment,500,"1405/06/25","موکل","رسید آزمایشی");
         assertEquals(500,db.installments(1).get(0).paid);
+        long deadline=db.addDeadline(1,"مهلت نمونه","1405/06/24","1405/07/25",31,"فقط آزمایش");
+        try(Cursor c=db.getReadableDatabase().rawQuery("SELECT COUNT(*) FROM reminders WHERE target_type='deadline' AND target_id=?",new String[]{String.valueOf(deadline)})){assertTrue(c.moveToFirst());assertEquals(4,c.getInt(0));}
         JSONObject missing=new JSONObject(db.exportJson());missing.getJSONObject("tables").remove("clients");
         try{db.importJson(missing.toString());fail("Incomplete backup must be rejected");}catch(Exception expected){assertEquals(1,db.countClients());}
         db.importJson(db.exportJson());
         assertEquals(500,db.installments(1).get(0).paid);
+        assertEquals(1,db.deadlines(1L,true).size());
         db.close();
         OfficeDb reopened=new OfficeDb(context);assertEquals(1,reopened.countClients());assertEquals(500,reopened.installments(1).get(0).paid);reopened.close();
     }
