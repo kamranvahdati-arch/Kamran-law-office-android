@@ -102,4 +102,21 @@ final class JalaliDate {
         while (gm <= 12 && gd > sal[gm]) gd -= sal[gm++];
         return new int[]{gy, gm, gd};
     }
+
+    static JalaliDate parse(String raw) {
+        if(raw==null)throw new IllegalArgumentException("تاریخ را وارد کنید");
+        String text=asciiDigits(raw.trim().replace('-', '/'));
+        if(!text.matches("[0-9]{4}/[0-9]{1,2}/[0-9]{1,2}"))throw new IllegalArgumentException("تاریخ شمسی به شکل ۱۴۰۵/۰۶/۲۴ باشد");
+        String[] p=text.split("/");int y=Integer.parseInt(p[0]),m=Integer.parseInt(p[1]),d=Integer.parseInt(p[2]);
+        if(y<1200||y>1700||m<1||m>12||d<1||d>monthLength(y,m))throw new IllegalArgumentException("تاریخ شمسی معتبر نیست");
+        return new JalaliDate(y,m,d);
+    }
+
+    static String asciiDigits(String raw){StringBuilder b=new StringBuilder();for(char c:raw.toCharArray()){if(c>='۰'&&c<='۹')b.append((char)('0'+c-'۰'));else if(c>='٠'&&c<='٩')b.append((char)('0'+c-'٠'));else b.append(c);}return b.toString();}
+
+    static Calendar calendar(String date){JalaliDate j=parse(date);int[] g=toGregorian(j.year,j.month,j.day);Calendar c=Calendar.getInstance();c.clear();c.set(g[0],g[1]-1,g[2],12,0,0);return c;}
+
+    static String addDays(String date,int days){Calendar c=calendar(date);c.add(Calendar.DAY_OF_MONTH,days);return fromGregorian(c.get(Calendar.YEAR),c.get(Calendar.MONTH)+1,c.get(Calendar.DAY_OF_MONTH)).value();}
+
+    static int daysBetween(String start,String end){Calendar a=calendar(start),b=calendar(end);long delta=b.getTimeInMillis()-a.getTimeInMillis();return (int)Math.round(delta/86400000.0);}
 }
