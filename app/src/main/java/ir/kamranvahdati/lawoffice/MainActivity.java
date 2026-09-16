@@ -62,8 +62,9 @@ public class MainActivity extends Activity {
     section("جلسات، ملاقات و مشاوره امروز","وقت شروع، پایان و نام مراجعه‌کننده");
     List<OfficeDb.AppointmentRecord> visits=db.appointments(today.value());if(visits.isEmpty())page.addView(empty("برای امروز وقت ملاقات ثبت نشده است."));else for(OfficeDb.AppointmentRecord a:visits)page.addView(appointmentCard(a));
     TextView allVisits=action("فهرست همه وقت‌ها و قرارها");allVisits.setOnClickListener(v->appointmentList(null));page.addView(allVisits);
-    section("مهلت‌های پرونده","روز شمار بر مبنای تاریخ نهایی ثبت‌شده توسط وکیل");
-    List<OfficeDb.DeadlineRecord> deadlines=db.deadlines(null,true);int shown=0;for(OfficeDb.DeadlineRecord d:deadlines)if(shown++<12)page.addView(deadlineCard(d));
+    List<OfficeDb.DeadlineRecord> deadlines=db.deadlines(null,true);int overdue=0,near=0;String threshold=JalaliDate.addDays(today.value(),7);for(OfficeDb.DeadlineRecord d:deadlines){if(d.dueDate.compareTo(today.value())<0)overdue++;else if(d.dueDate.compareTo(threshold)<=0)near++;}
+    section("مهلت‌های گذشته",overdue+" مورد نیازمند بررسی فوری");int shown=0;for(OfficeDb.DeadlineRecord d:deadlines)if(d.dueDate.compareTo(today.value())<0&&shown++<6)page.addView(deadlineCard(d));
+    section("مهلت‌های نزدیک",near+" مهلت در هفت روز آینده");shown=0;for(OfficeDb.DeadlineRecord d:deadlines)if(d.dueDate.compareTo(today.value())>=0&&d.dueDate.compareTo(threshold)<=0&&shown++<12)page.addView(deadlineCard(d));
     if(deadlines.isEmpty())page.addView(empty("مهلتی ثبت نشده است."));TextView allDeadlines=action("دیدن همه مهلت‌ها");allDeadlines.setOnClickListener(v->deadlineList(null));page.addView(allDeadlines);
     ArrayList<OfficeDb.TaskRecord> urgent=new ArrayList<>();for(OfficeDb.TaskRecord t:db.tasksForDate(today.value()))if(t.done==0&&"فوری".equals(t.priority))urgent.add(t);
     section("اولویت فوری امروز",urgent.isEmpty()?"مورد فوری ثبت نشده":"تعداد: "+urgent.size());if(urgent.isEmpty())page.addView(empty("برای امروز کار فوری ندارید."));else for(OfficeDb.TaskRecord t:urgent)page.addView(taskCard(t));
@@ -117,6 +118,7 @@ public class MainActivity extends Activity {
       Long id=person.getSelectedItemPosition()>0?clients.get(person.getSelectedItemPosition()-1).id:null;
       String contact=id==null?phone.getText().toString():clients.get(person.getSelectedItemPosition()-1).phone;
       Long selectedCase=casePick.getSelectedItemPosition()>0?caseList.get(casePick.getSelectedItemPosition()-1).id:null;
+      if(selectedCase!=null&&id!=null){OfficeDb.CaseRecord linked=caseList.get(casePick.getSelectedItemPosition()-1);if(linked.clientId>0&&linked.clientId!=id)throw new IllegalArgumentException("موکل این قرار با پرونده انتخابی مطابقت ندارد");}
       db.addAppointment(kind.getSelectedItem().toString(),n,contact,id,selectedCase,when,a,b,place.getText().toString(),notes.getText().toString());ReminderReceiver.schedule(this);
       d.dismiss();if(active==HOME)dayAgenda(when);else appointmentList(null);
     }catch(Exception e){toast(e.getMessage()==null?"اطلاعات قرار معتبر نیست":e.getMessage());}}));d.show();
