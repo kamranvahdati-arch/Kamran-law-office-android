@@ -1,10 +1,10 @@
 name: Build Android APK
-
 on:
   push:
     branches: [ main ]
+  pull_request:
+    branches: [ main ]
   workflow_dispatch:
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -35,12 +35,32 @@ jobs:
           name: Kamran-Law-Office-APK
           path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
-      - name: Publish simple APK download
+          retention-days: 30
+      - name: Enable hardware acceleration for Android emulator
+        if: github.event_name == 'pull_request'
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Exercise encrypted migration on an emulator
+        if: github.event_name == 'pull_request'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86_64
+          target: google_apis
+          disable-animations: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            adb wait-for-device
+            adb shell getprop sys.boot_completed
+            gradle connectedDebugAndroidTest --stacktrace
+      - name: Publish APK plus ZIP
         if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp app/build/outputs/apk/release/app-release.apk Kamran-Law-Office-v0.8.0.apk
-          zip -j Kamran-Law-Office-v0.8.0.zip Kamran-Law-Office-v0.8.0.apk
-          gh release view latest-preview >/dev/null 2>&1 || gh release create latest-preview --title "نسخه آزمایشی دفتر وکالت" --notes "نسخه آزمایشی عمومی ۰٫۸٫۰، آفلاین با داده‌های کاملاً فرضی و امکانات قرارها، مهلت‌ها، داشبورد تعاملی و گزارش موردی"
-          gh release upload latest-preview Kamran-Law-Office-v0.8.0.apk Kamran-Law-Office-v0.8.0.zip --clobber
+          cp app/build/outputs/apk/release/app-release.apk Kamran-Law-Office-v0.8.1.apk
+          zip -j Kamran-Law-Office-v0.8.1.zip Kamran-Law-Office-v0.8.1.apk
+          gh release view latest-preview >/dev/null 2>&1 || gh release create latest-preview --title "نسخه آزمایشی دفتر وکالت" --notes "نسخه عمومی آزمایشی؛ فقط داده فرضی. برای محدودیت‌های امنیتی و مهاجرت، AUDIT_V08.md را بخوانید."
+          gh release upload latest-preview Kamran-Law-Office-v0.8.1.apk Kamran-Law-Office-v0.8.1.zip --clobber
