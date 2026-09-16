@@ -48,11 +48,7 @@ jobs:
           script: |
             adb wait-for-device
             adb shell getprop sys.boot_completed
-            adb logcat -c
-            gradle connectedDebugAndroidTest --stacktrace || {
-              adb logcat -d -v time -t 4000 | grep -E 'AndroidRuntime|FATAL EXCEPTION|Process: ir.kamranvahdati|sqlcipher|zetetic|EncryptedMigrationTest|JUnit' | tail -n 160
-              exit 1
-            }
+            gradle connectedDebugAndroidTest --stacktrace
       - name: Publish APK plus ZIP
         if: github.ref == 'refs/heads/main'
         env:
