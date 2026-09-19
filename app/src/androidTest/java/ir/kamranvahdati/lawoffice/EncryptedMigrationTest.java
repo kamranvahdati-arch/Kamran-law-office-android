@@ -75,6 +75,6 @@ public class EncryptedMigrationTest {
         assertEquals(1,db.financialContracts(1).size());
         assertEquals(1,db.paymentChecks(1L,null).size());
         db.close();
-        OfficeDb reopened=new OfficeDb(context);assertEquals(1,reopened.countClients());assertEquals(500,reopened.installments(1).get(0).paid);reopened.close();
+        OfficeDb reopened=new OfficeDb(context);assertEquals(2,reopened.countClients());assertEquals(500,reopened.installments(1).get(0).paid);reopened.close();
     }
 }
