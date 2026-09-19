@@ -15,6 +15,7 @@ import org.junit.runner.RunWith;
 
 import java.io.FileInputStream;
 import java.util.Arrays;
+import java.util.Collections;
 
 @RunWith(AndroidJUnit4.class)
 public class EncryptedMigrationTest {
@@ -40,6 +41,8 @@ public class EncryptedMigrationTest {
         assertFalse(context.getDatabasePath(OfficeDb.LEGACY_NAME).exists());
         assertEquals(1,db.countClients());
         assertEquals(1,db.cases(null,"همه",null).size());
+        assertEquals(1,db.caseClients(1).size());
+        try(Cursor c=db.getReadableDatabase().rawQuery("PRAGMA user_version",null)){assertTrue(c.moveToFirst());assertEquals(10,c.getInt(0));}
         try(Cursor c=db.getReadableDatabase().rawQuery("SELECT COUNT(*) FROM clients WHERE uid IS NULL",null)){assertTrue(c.moveToFirst());assertEquals(0,c.getInt(0));}
         byte[] header=new byte[16];try(FileInputStream in=new FileInputStream(context.getDatabasePath(OfficeDb.ENCRYPTED_NAME))){assertEquals(16,in.read(header));}
         assertFalse(Arrays.equals("SQLite format 3\u0000".getBytes("UTF-8"),header));
@@ -50,9 +53,27 @@ public class EncryptedMigrationTest {
         try(Cursor c=db.getReadableDatabase().rawQuery("SELECT COUNT(*) FROM reminders WHERE target_type='deadline' AND target_id=?",new String[]{String.valueOf(deadline)})){assertTrue(c.moveToFirst());assertEquals(4,c.getInt(0));}
         JSONObject missing=new JSONObject(db.exportJson());missing.getJSONObject("tables").remove("clients");
         try{db.importJson(missing.toString());fail("Incomplete backup must be rejected");}catch(Exception expected){assertEquals(1,db.countClients());}
-        db.importJson(db.exportJson());
+        long secondClient=db.addClient("موکل دوم فرضی","0013540831","پدر نمونه","1360/01/01","09120000001","تهران","فقط آزمون");
+        db.addClientToCase(1,secondClient,"موکل مشترک",false);
+        assertEquals(2,db.caseClients(1).size());
+        long collaborator=db.addCollaborator("وکیل","همکار","12345","کانون وکلای دادگستری","09120000002","فقط آزمون");
+        db.linkCollaborator(1,collaborator,"مشترک / مجتمع",25,"توافق فرضی");
+        assertEquals(1,db.caseCollaborators(1).size());
+        long contract=db.addRepresentationContract(1,"E-100","1405/06/28","دفاع","تمام مراحل",1000,false,"طرف فرضی",true,"مشترک / مجتمع","آزمون",Arrays.asList(1L,secondClient),Collections.singletonList(collaborator));
+        assertTrue(contract>0);assertEquals(1,db.representationContracts(1L,null).size());assertEquals(1,db.representationContracts(null,secondClient).size());
+        assertTrue(db.addFinancialContract(1,"1405/06/28",1000,"دو قسط","آزمون")>0);
+        assertEquals(1,db.financialContracts(1).size());
+        long check=db.addPaymentCheck(1,installment,"CHK-1","1405/07/01",500,"بانک نمونه","شعبه نمونه","pending","آزمون");
+        assertTrue(check>0);assertEquals(1,db.paymentChecks(1L,null).size());
+        String fullBackup=db.exportJson();
+        db.importJson(fullBackup);
         assertEquals(500,db.installments(1).get(0).paid);
         assertEquals(1,db.deadlines(1L,true).size());
+        assertEquals(2,db.caseClients(1).size());
+        assertEquals(1,db.caseCollaborators(1).size());
+        assertEquals(1,db.representationContracts(1L,null).size());
+        assertEquals(1,db.financialContracts(1).size());
+        assertEquals(1,db.paymentChecks(1L,null).size());
         db.close();
         OfficeDb reopened=new OfficeDb(context);assertEquals(1,reopened.countClients());assertEquals(500,reopened.installments(1).get(0).paid);reopened.close();
     }
