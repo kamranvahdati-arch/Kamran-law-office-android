@@ -17,6 +17,7 @@ final public class ReminderReceiver extends BroadcastReceiver {
     private static final String CHANNEL="case_deadlines";
 
     static void schedule(Context context) {
+        if(!context.getSharedPreferences("office_profile",Context.MODE_PRIVATE).getBoolean("notifications_enabled",true))return;
         AlarmManager alarms=(AlarmManager)context.getSystemService(Context.ALARM_SERVICE);
         if(alarms==null)return;
         OfficeDb db=new OfficeDb(context);
@@ -32,12 +33,13 @@ final public class ReminderReceiver extends BroadcastReceiver {
     @Override public void onReceive(Context context,Intent intent) {
         if(Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction())){schedule(context);return;}
         if(!ACTION_REMINDER.equals(intent.getAction()))return;
+        if(!context.getSharedPreferences("office_profile",Context.MODE_PRIVATE).getBoolean("notifications_enabled",true))return;
         long id=intent.getLongExtra("id",-1);if(id<0)return;
         OfficeDb db=new OfficeDb(context);boolean valid=db.fireReminder(id);db.close();if(!valid)return;
         if(Build.VERSION.SDK_INT>=33&&context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)return;
         NotificationManager manager=(NotificationManager)context.getSystemService(Context.NOTIFICATION_SERVICE);if(manager==null)return;
         if(Build.VERSION.SDK_INT>=26)manager.createNotificationChannel(new NotificationChannel(CHANNEL,"مهلت‌های قضایی",NotificationManager.IMPORTANCE_HIGH));
-        int days=intent.getIntExtra("days",0);String kind=intent.getStringExtra("kind");String label="deadline".equals(kind)?"مهلت پرونده":"appointment".equals(kind)?"قرار یا جلسه":"کار برنامه‌ریزی‌شده";
+        int days=intent.getIntExtra("days",0);String kind=intent.getStringExtra("kind");String label="deadline".equals(kind)?"مهلت پرونده":"appointment".equals(kind)?"قرار یا جلسه":"installment".equals(kind)?"سررسید قسط":"check".equals(kind)?"سررسید چک":"کار برنامه‌ریزی‌شده";
         Intent open=new Intent(context,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP);
         PendingIntent click=PendingIntent.getActivity(context,0,open,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
         Notification.Builder builder=Build.VERSION.SDK_INT>=26?new Notification.Builder(context,CHANNEL):new Notification.Builder(context);

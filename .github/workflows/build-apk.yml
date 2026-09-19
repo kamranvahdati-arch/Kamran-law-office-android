@@ -25,8 +25,9 @@ jobs:
       - name: Test Jalali deadline math
         run: |
           mkdir -p /tmp/klo-date-test
-          javac -d /tmp/klo-date-test app/src/main/java/ir/kamranvahdati/lawoffice/JalaliDate.java app/src/test/java/ir/kamranvahdati/lawoffice/DeadlineDateSmokeTest.java
+          javac -d /tmp/klo-date-test app/src/main/java/ir/kamranvahdati/lawoffice/JalaliDate.java app/src/main/java/ir/kamranvahdati/lawoffice/InputValidators.java app/src/test/java/ir/kamranvahdati/lawoffice/DeadlineDateSmokeTest.java app/src/test/java/ir/kamranvahdati/lawoffice/InputValidatorsSmokeTest.java
           java -cp /tmp/klo-date-test ir.kamranvahdati.lawoffice.DeadlineDateSmokeTest
+          java -cp /tmp/klo-date-test ir.kamranvahdati.lawoffice.InputValidatorsSmokeTest
       - name: Build release APK
         run: gradle assembleRelease
       - name: Upload APK
@@ -60,7 +61,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp app/build/outputs/apk/release/app-release.apk Kamran-Law-Office-v0.8.1.apk
-          zip -j Kamran-Law-Office-v0.8.1.zip Kamran-Law-Office-v0.8.1.apk
-          gh release view latest-preview >/dev/null 2>&1 || gh release create latest-preview --title "نسخه آزمایشی دفتر وکالت" --notes "نسخه عمومی آزمایشی؛ فقط داده فرضی. برای محدودیت‌های امنیتی و مهاجرت، AUDIT_V08.md را بخوانید."
-          gh release upload latest-preview Kamran-Law-Office-v0.8.1.apk Kamran-Law-Office-v0.8.1.zip --clobber
+          cp app/build/outputs/apk/release/app-release.apk Kamran-Law-Office-v0.9.0-test.apk
+          zip -j Kamran-Law-Office-v0.9.0-test.zip Kamran-Law-Office-v0.9.0-test.apk
+          gh release view latest-preview >/dev/null 2>&1 || gh release create latest-preview --title "نسخه آزمایشی دفتر وکالت" --notes "نسخه عمومی آزمایشی با امضای توسعه؛ داده‌های دمو قابل حذف‌اند. این فایل release تولیدی و امضاشده تجاری نیست."
+          gh release upload latest-preview Kamran-Law-Office-v0.9.0-test.apk Kamran-Law-Office-v0.9.0-test.zip --clobber
