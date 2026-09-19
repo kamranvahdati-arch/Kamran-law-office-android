@@ -31,7 +31,8 @@ public class MainActivity extends Activity {
   int calYear,calMonth; WebView printView;
 
   @Override public void onCreate(Bundle b){super.onCreate(b);getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);try{start();}catch(Throwable e){errorScreen(e);}}
-  void start() throws Exception {prefs=getSharedPreferences("office_profile",MODE_PRIVATE);applyAppearance();applyKeepScreenOn();db=new OfficeDb(this);LegacyMigration.migrate(this,db);JalaliDate j=JalaliDate.today();calYear=j.year;calMonth=j.month;selectedDate=j.value();shell();ReminderReceiver.schedule(this);if(!prefs.getBoolean("profile_complete",false))lawyer();else if(prefs.getBoolean("lock_enabled",false)){root.setVisibility(View.INVISIBLE);unlock();}else dashboard();}
+  void start() throws Exception {prefs=getSharedPreferences("office_profile",MODE_PRIVATE);applyAppearance();applyKeepScreenOn();db=new OfficeDb(this);LegacyMigration.migrate(this,db);JalaliDate j=JalaliDate.today();calYear=j.year;calMonth=j.month;selectedDate=j.value();shell();ReminderReceiver.schedule(this);if(!profileReady())lawyer();else if(prefs.getBoolean("lock_enabled",false)){root.setVisibility(View.INVISIBLE);unlock();}else dashboard();}
+  boolean profileReady(){return prefs.getBoolean("profile_complete",false)&&!blank(prefs.getString("name",""))&&!blank(prefs.getString("professional_body",""))&&!blank(prefs.getString("province",""))&&!blank(prefs.getString("city",""))&&InputValidators.isValidIranianNationalId(prefs.getString("national_id",""))&&InputValidators.isValidIranianMobile(prefs.getString("phone",""));}
   @Override protected void onStop(){super.onStop();if(prefs!=null&&prefs.getBoolean("lock_enabled",false)&&authenticated){reauth=true;authenticated=false;if(root!=null)root.setVisibility(View.INVISIBLE);}}
   @Override protected void onStart(){super.onStart();if(reauth&&root!=null){reauth=false;unlock();}}
   void applyAppearance(){String fallback=prefs!=null&&prefs.getBoolean("dark",false)?AppTheme.DARK:AppTheme.LIGHT;theme=AppTheme.from(prefs==null?fallback:prefs.getString("theme_id",fallback));dark=theme.dark;fontScale=prefs==null?1f:prefs.getFloat("font_scale",1f);NAVY=theme.primary;BLUE=theme.accent;PAPER=theme.background;CARD=theme.card;INK=theme.text;MUTED=theme.muted;RED=theme.danger;GREEN=theme.success;}
@@ -50,7 +51,7 @@ public class MainActivity extends Activity {
     TextView product=txt("اپلیکیشن جامع و هوشمند وکیل من",22,INK);product.setTypeface(null,Typeface.BOLD);product.setGravity(Gravity.CENTER);product.setPadding(dp(8),dp(4),dp(8),dp(14));page.addView(product);
     LinearLayout hero=row();hero.setGravity(Gravity.CENTER_VERTICAL);hero.setPadding(dp(18),dp(17),dp(18),dp(17));hero.setBackground(round(NAVY,18));
     LinearLayout welcome=col();TextView hi=txt(greeting()+" وکیل "+prefs.getString("name","محترم"),20,Color.WHITE);hi.setTypeface(null,Typeface.BOLD);welcome.addView(hi);
-    welcome.addView(txt("امروز «"+persianWeekday(today.value())+" "+today.day+" "+JalaliDate.monthName(today.month)+" "+today.year+"»",13,Color.rgb(210,218,232)));hero.addView(welcome,weight());
+    welcome.addView(txt("امروز «"+persianWeekday(today.value())+" "+faNumber(today.day)+" "+JalaliDate.monthName(today.month)+" "+faNumber(today.year)+"»",13,Color.rgb(210,218,232)));hero.addView(welcome,weight());
     ImageView photo=image(prefs.getString("photo",null));photo.setContentDescription("عکس وکیل؛ ورود به اطلاعات وکیل فقط از منو");hero.addView(photo,lp(dp(54),dp(54)));margin(hero,0,0,0,14);page.addView(hero);
     LinearLayout stats=row();View totalCases=stat("کل پرونده‌ها",db.countCases(null),"#",BLUE),current=stat("پرونده جاری",db.countCases("active"),"⚖",BLUE),people=stat("موکلان",db.countClients(),"●",GREEN),closed=stat("مختومه",db.countCases("closed"),"✓",MUTED);
     totalCases.setOnClickListener(v->{caseStatus=null;clientsTab=false;go(CASES,true);});
@@ -80,6 +81,7 @@ public class MainActivity extends Activity {
     for(OfficeDb.AppointmentRecord a:db.appointments(selectedDate))page.addView(appointmentCard(a));
   }
   String greeting(){int h=Calendar.getInstance().get(Calendar.HOUR_OF_DAY);return h<12?"صبح بخیر":h<18?"روز بخیر":"شب بخیر";}
+  String faNumber(long value){return String.valueOf(value).replace('0','۰').replace('1','۱').replace('2','۲').replace('3','۳').replace('4','۴').replace('5','۵').replace('6','۶').replace('7','۷').replace('8','۸').replace('9','۹');}
   String persianWeekday(String date){Calendar c=JalaliDate.calendar(date);String[] names={"یکشنبه","دوشنبه","سه‌شنبه","چهارشنبه","پنجشنبه","جمعه","شنبه"};return names[c.get(Calendar.DAY_OF_WEEK)-1];}
   View calendar(){
     LinearLayout card=col();card.setPadding(dp(12),dp(12),dp(12),dp(14));card.setBackground(round(Color.WHITE,16));
