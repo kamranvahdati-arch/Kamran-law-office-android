@@ -20,6 +20,15 @@ public class UiFlowSmokeTest {
     @Test public void actualScreensAndDialogsOpenInEveryTheme() throws Exception {
         Instrumentation instrumentation=InstrumentationRegistry.getInstrumentation();
         Context context=instrumentation.getTargetContext();
+        // Every theme is exercised with actual urgent/overdue fixture records, not an empty dashboard.
+        context.deleteDatabase(OfficeDb.ENCRYPTED_NAME);
+        OfficeDb fixtures=new OfficeDb(context);
+        try {
+            String today=JalaliDate.today().value();
+            for(int offset:new int[]{-1,0,1,2,3,10})fixtures.saveDeadline(1,1L,"مهلت فرضی "+offset,
+                JalaliDate.addDays(today,-20),JalaliDate.addDays(today,offset),20+offset,"صرفاً آزمون ظاهر هشدارها");
+            fixtures.saveAppointment("جلسه دادگاه","موکل فرضی","",1L,1L,today,"13:25","14:10","نشانی فرضی","آزمون","۲","مرجع فرضی","تهران");
+        } finally {fixtures.close();}
         for(String theme:AppTheme.ids()){
             context.getSharedPreferences("office_profile",Context.MODE_PRIVATE).edit()
               .putString("theme_id",theme).putBoolean("profile_complete",true)
