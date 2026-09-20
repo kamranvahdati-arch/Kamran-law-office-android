@@ -64,7 +64,7 @@ jobs:
             adb shell wm size 720x1280
             gradle connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=ir.kamranvahdati.lawoffice.UiFlowSmokeTest --stacktrace
             adb shell wm size reset
-            adb pull /sdcard/Android/data/ir.kamranvahdati.lawoffice/files/qa app/build/qa
+            adb pull /data/local/tmp/klo-qa app/build/qa
             adb install -r app/build/outputs/apk/preview/app-preview.apk
             adb shell am start -W -n ir.kamranvahdati.lawoffice.preview/ir.kamranvahdati.lawoffice.MainActivity
             adb shell pidof ir.kamranvahdati.lawoffice.preview
