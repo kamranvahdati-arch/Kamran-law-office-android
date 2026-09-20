@@ -45,7 +45,7 @@ final public class ReminderReceiver extends BroadcastReceiver {
         Intent open=new Intent(context,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP);
         PendingIntent click=PendingIntent.getActivity(context,0,open,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
         Notification.Builder builder=Build.VERSION.SDK_INT>=26?new Notification.Builder(context,CHANNEL):new Notification.Builder(context);
-        Notification n=builder.setSmallIcon(android.R.drawable.ic_dialog_info).setContentTitle(reminderLabel==null||reminderLabel.isEmpty()?"یادآوری "+label:reminderLabel).setContentText(days==0?"زمان یادآوری ثبت‌شده فرا رسیده؛ برنامه را بررسی کنید":"زمان ثبت‌شده تا "+days+" روز دیگر نزدیک می‌شود؛ برنامه را بررسی کنید").setContentIntent(click).setAutoCancel(true).setVisibility(Notification.VISIBILITY_PRIVATE).build();
+        Notification n=builder.setSmallIcon(android.R.drawable.ic_dialog_info).setContentTitle(reminderLabel==null||reminderLabel.isEmpty()?"یادآوری "+label:reminderLabel).setContentText("زمان یادآوری ثبت‌شده فرا رسیده؛ برنامه را بررسی کنید").setContentIntent(click).setAutoCancel(true).setVisibility(Notification.VISIBILITY_PRIVATE).build();
         manager.notify((int)id,n);
     }
 }

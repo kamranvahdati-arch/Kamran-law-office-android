@@ -25,7 +25,7 @@ public class ScheduleMigrationTest {
         before.getWritableDatabase().execSQL("ALTER TABLE reminders DROP COLUMN label");
         before.getWritableDatabase().setVersion(11);before.close();
         OfficeDb db=new OfficeDb(context);
-        assertEquals(12,db.getReadableDatabase().getVersion());
+        assertEquals(13,db.getReadableDatabase().getVersion());
         OfficeDb.DeadlineRecord record=null;for(OfficeDb.DeadlineRecord d:db.deadlines(null,false))if(d.id==deadline)record=d;
         assertNotNull(record);assertEquals(due,record.dueDate);
         assertEquals(originalReminder,db.remindersFor("deadline",deadline).get(0).at);

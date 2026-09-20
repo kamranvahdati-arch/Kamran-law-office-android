@@ -23,7 +23,7 @@ final class OfficeDb extends SQLiteOpenHelper {
     static final String LEGACY_NAME = "law_office_demo_v7.db";
     static final String ENCRYPTED_NAME = "law_office_encrypted_v9.db";
     static final String DATABASE_NAME = ENCRYPTED_NAME;
-    private static final int VERSION = 12;
+    private static final int VERSION = 13;
 
     OfficeDb(Context context) {
         super(context, DATABASE_NAME, DatabaseKey.read(context), null, VERSION, 0, null, null, false);
@@ -64,6 +64,7 @@ final class OfficeDb extends SQLiteOpenHelper {
         migrateV10(db);
         migrateV11(db);
         migrateV12(db);
+        migrateV13(db);
         seed(db);
     }
 
@@ -99,6 +100,12 @@ final class OfficeDb extends SQLiteOpenHelper {
         if (oldVersion < 10) migrateV10(db);
         if (oldVersion < 11) migrateV11(db);
         if (oldVersion < 12) migrateV12(db);
+        if (oldVersion < 13) migrateV13(db);
+    }
+
+    private void migrateV13(SQLiteDatabase db) {
+        addColumn(db,"payment_checks","collection_ledger_id INTEGER REFERENCES ledger(id)");
+        db.execSQL("UPDATE payment_checks SET collection_ledger_id=(SELECT ip.ledger_id FROM installment_payments ip WHERE ip.check_id=payment_checks.id AND ip.deleted_at IS NULL ORDER BY ip.id DESC LIMIT 1) WHERE collection_ledger_id IS NULL");
     }
 
     /** Additive only: preserve existing dates, reminder epochs, IDs and completion flags. */
@@ -371,7 +378,7 @@ final class OfficeDb extends SQLiteOpenHelper {
         return getWritableDatabase().insertOrThrow("clients", null, v);
     }
 
-    void updateClient(long id,String name,String nationalId,String father,String birth,String phone,String address,String notes){ContentValues v=new ContentValues();v.put("name",name);v.put("national_id",nationalId);v.put("father_name",father);v.put("birth_date",birth);v.put("phone",phone);v.put("address",address);v.put("notes",notes);v.put("updated_at",now());if(getWritableDatabase().update("clients",v,"id=? AND deleted_at IS NULL",new String[]{String.valueOf(id)})!=1)throw new IllegalArgumentException("موکل یافت نشد");}
+    void updateClient(long id,String name,String nationalId,String father,String birth,String phone,String address,String notes){ContentValues v=new ContentValues();v.put("is_demo",0);v.put("name",name);v.put("national_id",nationalId);v.put("father_name",father);v.put("birth_date",birth);v.put("phone",phone);v.put("address",address);v.put("notes",notes);v.put("updated_at",now());if(getWritableDatabase().update("clients",v,"id=? AND deleted_at IS NULL",new String[]{String.valueOf(id)})!=1)throw new IllegalArgumentException("موکل یافت نشد");}
     void deleteClient(long id){if(scalar("SELECT COUNT(*) FROM case_clients cc JOIN cases c ON c.id=cc.case_id WHERE cc.client_id=? AND cc.deleted_at IS NULL AND c.deleted_at IS NULL",String.valueOf(id))>0)throw new IllegalArgumentException("ابتدا ارتباط این موکل با پرونده‌ها را مدیریت کنید");softDelete("clients",id);}
 
     long addCase(CaseRecord c) {
@@ -379,7 +386,7 @@ final class OfficeDb extends SQLiteOpenHelper {
         identity(v);
         SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{long id=db.insertOrThrow("cases", null, v);if(c.clientId>0)addCaseClient(db,id,c.clientId,"موکل اصلی",true,false);db.setTransactionSuccessful();return id;}finally{db.endTransaction();}
     }
-    void updateCase(CaseRecord c){SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{ContentValues v=caseValues(c);v.put("updated_at",now());if(db.update("cases",v,"id=? AND deleted_at IS NULL",new String[]{String.valueOf(c.id)})!=1)throw new IllegalArgumentException("پرونده یافت نشد");if(c.clientId>0){ContentValues primaryOff=new ContentValues();primaryOff.put("is_primary",0);primaryOff.put("updated_at",now());db.update("case_clients",primaryOff,"case_id=? AND deleted_at IS NULL",new String[]{String.valueOf(c.id)});addCaseClient(db,c.id,c.clientId,"موکل اصلی",true,false);}db.setTransactionSuccessful();}finally{db.endTransaction();}}
+    void updateCase(CaseRecord c){SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{ContentValues v=caseValues(c);v.put("is_demo",0);v.put("updated_at",now());if(db.update("cases",v,"id=? AND deleted_at IS NULL",new String[]{String.valueOf(c.id)})!=1)throw new IllegalArgumentException("پرونده یافت نشد");if(c.clientId>0){ContentValues primaryOff=new ContentValues();primaryOff.put("is_primary",0);primaryOff.put("updated_at",now());db.update("case_clients",primaryOff,"case_id=? AND deleted_at IS NULL",new String[]{String.valueOf(c.id)});addCaseClient(db,c.id,c.clientId,"موکل اصلی",true,false);}db.setTransactionSuccessful();}finally{db.endTransaction();}}
     void deleteCase(long id){SQLiteDatabase db=getWritableDatabase();String[] args={String.valueOf(id)};db.beginTransaction();try{String t=now();ContentValues tomb=new ContentValues();tomb.put("deleted_at",t);tomb.put("updated_at",t);db.update("reminders",tomb,"(target_type='deadline' AND target_id IN(SELECT id FROM deadlines WHERE case_id=?)) OR (target_type='task' AND target_id IN(SELECT id FROM tasks WHERE case_id=?)) OR (target_type='appointment' AND target_id IN(SELECT id FROM appointments WHERE case_id=?))",new String[]{args[0],args[0],args[0]});db.update("installment_payments",tomb,"installment_id IN(SELECT id FROM installments WHERE case_id=?)",args);db.update("contract_clients",tomb,"contract_id IN(SELECT id FROM representation_contracts WHERE case_id=?)",args);db.update("contract_collaborators",tomb,"contract_id IN(SELECT id FROM representation_contracts WHERE case_id=?)",args);for(String child:new String[]{"tasks","ledger","worklogs","appointments","deadlines","installments","case_clients","case_collaborators","representation_contracts","financial_contracts","payment_checks","case_attachments"})db.update(child,tomb,"case_id=? AND deleted_at IS NULL",args);db.update("cases",tomb,"id=? AND deleted_at IS NULL",args);db.setTransactionSuccessful();}finally{db.endTransaction();}}
     private void softDelete(String table,long id){ContentValues v=new ContentValues();v.put("deleted_at",now());v.put("updated_at",now());getWritableDatabase().update(table,v,"id=? AND deleted_at IS NULL",new String[]{String.valueOf(id)});}
 
@@ -414,10 +421,53 @@ final class OfficeDb extends SQLiteOpenHelper {
 
     long addFinancialContract(long caseId,String date,long total,String terms,String notes){if(total<0)throw new IllegalArgumentException("مبلغ قرارداد نمی‌تواند منفی باشد");ContentValues v=new ContentValues();identity(v);v.put("case_id",caseId);v.put("contract_date",date);v.put("total_amount",total);v.put("payment_terms",terms);v.put("notes",notes);return getWritableDatabase().insertOrThrow("financial_contracts",null,v);}
     List<FinancialContractRecord> financialContracts(long caseId){ArrayList<FinancialContractRecord> out=new ArrayList<>();try(Cursor c=getReadableDatabase().rawQuery("SELECT id,contract_date,total_amount,payment_terms,notes FROM financial_contracts WHERE case_id=? AND deleted_at IS NULL ORDER BY contract_date DESC,id DESC",new String[]{String.valueOf(caseId)})){while(c.moveToNext())out.add(new FinancialContractRecord(c.getLong(0),c.getString(1),c.getLong(2),c.getString(3),c.getString(4)));}return out;}
-    long addPaymentCheck(long caseId,Long installmentId,String number,String dueDate,long amount,String bank,String branch,String status,String notes){if(amount<=0)throw new IllegalArgumentException("مبلغ چک باید مثبت باشد");if(blank(number))throw new IllegalArgumentException("شماره چک الزامی است");SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{ContentValues v=new ContentValues();identity(v);v.put("case_id",caseId);if(installmentId!=null)v.put("installment_id",installmentId);v.put("check_number",number);v.put("due_date",dueDate);v.put("amount",amount);v.put("bank",bank);v.put("branch",branch);v.put("collection_status",status);v.put("notes",notes);long id=db.insertOrThrow("payment_checks",null,v);if("pending".equals(status))addStageReminders(db,"check",id,dueDate,"09:00",new int[]{7,3,2,1,0});db.setTransactionSuccessful();return id;}finally{db.endTransaction();}}
+    long addPaymentCheck(long caseId,Long installmentId,String number,String dueDate,long amount,String bank,String branch,String status,String notes){if(amount<=0)throw new IllegalArgumentException("مبلغ چک باید مثبت باشد");if(blank(number))throw new IllegalArgumentException("شماره چک الزامی است");SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{ContentValues v=new ContentValues();identity(v);v.put("case_id",caseId);if(installmentId!=null)v.put("installment_id",installmentId);v.put("check_number",number);v.put("due_date",dueDate);v.put("amount",amount);v.put("bank",bank);v.put("branch",branch);v.put("collection_status",status);v.put("notes",notes);long id=db.insertOrThrow("payment_checks",null,v);if("pending".equals(status))addStageReminders(db,"check",id,dueDate,"09:00",new int[]{7,3,2,1,0});if("collected".equals(status))updatePaymentCheckStatus(id,status);db.setTransactionSuccessful();return id;}finally{db.endTransaction();}}
     List<PaymentCheckRecord> paymentChecks(Long caseId,String dueBefore){ArrayList<PaymentCheckRecord> out=new ArrayList<>();StringBuilder w=new StringBuilder(" WHERE deleted_at IS NULL");ArrayList<String>a=new ArrayList<>();if(caseId!=null){w.append(" AND case_id=?");a.add(String.valueOf(caseId));}if(dueBefore!=null){w.append(" AND due_date<=?");a.add(dueBefore);}try(Cursor c=getReadableDatabase().rawQuery("SELECT id,case_id,check_number,due_date,amount,bank,branch,collection_status,notes FROM payment_checks"+w+" ORDER BY due_date,id",a.toArray(new String[0]))){while(c.moveToNext())out.add(new PaymentCheckRecord(c.getLong(0),c.getLong(1),c.getString(2),c.getString(3),c.getLong(4),c.getString(5),c.getString(6),c.getString(7),c.getString(8)));}return out;}
-    void updatePaymentCheckStatus(long id,String status){if(!"pending".equals(status)&&!"collected".equals(status)&&!"bounced".equals(status)&&!"cancelled".equals(status))throw new IllegalArgumentException("وضعیت چک معتبر نیست");SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{ContentValues v=new ContentValues();v.put("collection_status",status);v.put("updated_at",now());if(db.update("payment_checks",v,"id=? AND deleted_at IS NULL",new String[]{String.valueOf(id)})!=1)throw new IllegalArgumentException("چک یافت نشد");if(!"pending".equals(status)){ContentValues tomb=new ContentValues();tomb.put("deleted_at",now());tomb.put("updated_at",now());db.update("reminders",tomb,"target_type='check' AND target_id=? AND deleted_at IS NULL",new String[]{String.valueOf(id)});}db.setTransactionSuccessful();}finally{db.endTransaction();}}
-    void deletePaymentCheck(long id){SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{try(Cursor linked=db.rawQuery("SELECT COUNT(*) FROM installment_payments WHERE check_id=? AND deleted_at IS NULL",new String[]{String.valueOf(id)})){if(linked.moveToFirst()&&linked.getInt(0)>0)throw new IllegalArgumentException("چک به یک پرداخت وصول‌شده متصل است و قابل حذف نیست");}String deleted=now();ContentValues tomb=new ContentValues();tomb.put("deleted_at",deleted);tomb.put("updated_at",deleted);db.update("reminders",tomb,"target_type='check' AND target_id=? AND deleted_at IS NULL",new String[]{String.valueOf(id)});if(db.update("payment_checks",tomb,"id=? AND deleted_at IS NULL",new String[]{String.valueOf(id)})!=1)throw new IllegalArgumentException("چک یافت نشد");db.setTransactionSuccessful();}finally{db.endTransaction();}}
+    void updatePaymentCheckStatus(long id,String status){updatePaymentCheckStatus(id,status,JalaliDate.today().value(),"موکل");}
+    long recordInstallmentCheck(long caseId,long installmentId,String number,String dueDate,long amount,String bank,String branch,String status,String notes,String paidDate,String payer) {
+        SQLiteDatabase database=getWritableDatabase();database.beginTransaction();
+        try {
+            long id=addPaymentCheck(caseId,installmentId,number,dueDate,amount,bank,branch,"pending",notes);
+            if(!"pending".equals(status))updatePaymentCheckStatus(id,status,paidDate,payer);
+            database.setTransactionSuccessful();return id;
+        } finally {database.endTransaction();}
+    }
+    void updatePaymentCheckStatus(long id,String status,String paymentDate,String payer){
+        if(!java.util.Arrays.asList("pending","collected","bounced","cancelled").contains(status))throw new IllegalArgumentException("وضعیت چک معتبر نیست");
+        paymentDate=JalaliDate.parse(paymentDate).value();
+        SQLiteDatabase database=getWritableDatabase();database.beginTransaction();
+        try {
+            long caseId,amount;Long installmentId,ledgerId;String previous,number,dueDate;
+            try(Cursor c=database.rawQuery("SELECT case_id,amount,installment_id,collection_ledger_id,collection_status,check_number,due_date FROM payment_checks WHERE id=? AND deleted_at IS NULL",new String[]{String.valueOf(id)})){
+                if(!c.moveToFirst())throw new IllegalArgumentException("چک یافت نشد");
+                caseId=c.getLong(0);amount=c.getLong(1);installmentId=c.isNull(2)?null:c.getLong(2);ledgerId=c.isNull(3)?null:c.getLong(3);previous=c.getString(4);number=c.getString(5);dueDate=c.getString(6);
+            }
+            if("collected".equals(status)&&ledgerId==null) {
+                if(installmentId!=null){
+                    payInstallment(installmentId,amount,paymentDate,payer,"check",id,"وصول چک "+number);
+                    try(Cursor c=database.rawQuery("SELECT ledger_id FROM installment_payments WHERE check_id=? AND deleted_at IS NULL ORDER BY id DESC LIMIT 1",new String[]{String.valueOf(id)})){if(!c.moveToFirst())throw new IllegalStateException("پرداخت چک ثبت نشد");ledgerId=c.getLong(0);}
+                } else {
+                    ContentValues receipt=new ContentValues();identity(receipt);receipt.put("case_id",caseId);receipt.put("kind","payment");receipt.put("category","حق‌الوکاله");receipt.put("amount",amount);receipt.put("entry_date",paymentDate);receipt.put("paid_by",payer);receipt.put("description","وصول چک "+number);
+                    ledgerId=database.insertOrThrow("ledger",null,receipt);
+                }
+            } else if(!"collected".equals(status)&&ledgerId!=null) {
+                ContentValues tomb=new ContentValues();tomb.put("deleted_at",now());tomb.put("updated_at",now());
+                database.update("ledger",tomb,"id=?",new String[]{String.valueOf(ledgerId)});
+                database.update("installment_payments",tomb,"check_id=? AND deleted_at IS NULL",new String[]{String.valueOf(id)});
+                ledgerId=null;
+            }
+            ContentValues v=new ContentValues();v.put("collection_status",status);v.put("updated_at",now());
+            if(ledgerId==null)v.putNull("collection_ledger_id");else v.put("collection_ledger_id",ledgerId);
+            database.update("payment_checks",v,"id=?",new String[]{String.valueOf(id)});
+            if(!status.equals(previous)){
+                ContentValues tomb=new ContentValues();tomb.put("deleted_at",now());tomb.put("updated_at",now());
+                database.update("reminders",tomb,"target_type='check' AND target_id=? AND deleted_at IS NULL",new String[]{String.valueOf(id)});
+                if("pending".equals(status))addStageReminders(database,"check",id,dueDate,"09:00",new int[]{7,3,2,1,0});
+            }
+            database.setTransactionSuccessful();
+        } finally {database.endTransaction();}
+    }
+    void deletePaymentCheck(long id){SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{try(Cursor receipt=db.rawQuery("SELECT collection_ledger_id FROM payment_checks WHERE id=?",new String[]{String.valueOf(id)})){if(receipt.moveToFirst()&&!receipt.isNull(0))throw new IllegalArgumentException("ابتدا وضعیت وصول چک و اثر مالی آن را تعیین تکلیف کنید");}try(Cursor linked=db.rawQuery("SELECT COUNT(*) FROM installment_payments WHERE check_id=? AND deleted_at IS NULL",new String[]{String.valueOf(id)})){if(linked.moveToFirst()&&linked.getInt(0)>0)throw new IllegalArgumentException("چک به یک پرداخت وصول‌شده متصل است و قابل حذف نیست");}String deleted=now();ContentValues tomb=new ContentValues();tomb.put("deleted_at",deleted);tomb.put("updated_at",deleted);db.update("reminders",tomb,"target_type='check' AND target_id=? AND deleted_at IS NULL",new String[]{String.valueOf(id)});if(db.update("payment_checks",tomb,"id=? AND deleted_at IS NULL",new String[]{String.valueOf(id)})!=1)throw new IllegalArgumentException("چک یافت نشد");db.setTransactionSuccessful();}finally{db.endTransaction();}}
 
     long addCaseAttachment(long caseId,String name,String mime,String uri){if(blank(name)||blank(uri))throw new IllegalArgumentException("فایل معتبر نیست");ContentValues v=new ContentValues();identity(v);v.put("case_id",caseId);v.put("display_name",name);v.put("mime_type",blank(mime)?"application/octet-stream":mime);v.put("content_uri",uri);return getWritableDatabase().insertOrThrow("case_attachments",null,v);}
     List<CaseAttachmentRecord> caseAttachments(long caseId){ArrayList<CaseAttachmentRecord> out=new ArrayList<>();try(Cursor c=getReadableDatabase().rawQuery("SELECT id,case_id,display_name,mime_type,content_uri,created_at FROM case_attachments WHERE case_id=? AND deleted_at IS NULL ORDER BY id DESC",new String[]{String.valueOf(caseId)})){while(c.moveToNext())out.add(new CaseAttachmentRecord(c.getLong(0),c.getLong(1),c.getString(2),c.getString(3),c.getString(4),c.getString(5)));}return out;}
@@ -677,20 +727,84 @@ final class OfficeDb extends SQLiteOpenHelper {
         } finally {database.endTransaction();}
     }
     private static final String ACTIVE_REMINDER="((target_type='deadline' AND EXISTS(SELECT 1 FROM deadlines d JOIN cases cs ON cs.id=d.case_id WHERE d.id=reminders.target_id AND d.completed=0 AND d.deleted_at IS NULL AND cs.deleted_at IS NULL)) OR (target_type='task' AND EXISTS(SELECT 1 FROM tasks t WHERE t.id=reminders.target_id AND t.done=0 AND t.deleted_at IS NULL)) OR (target_type='appointment' AND EXISTS(SELECT 1 FROM appointments a WHERE a.id=reminders.target_id AND a.deleted_at IS NULL AND a.attendance_status='planned')) OR (target_type='installment' AND EXISTS(SELECT 1 FROM installments i WHERE i.id=reminders.target_id AND i.deleted_at IS NULL AND i.amount>(SELECT COALESCE(SUM(ip.amount),0) FROM installment_payments ip WHERE ip.installment_id=i.id AND ip.deleted_at IS NULL))) OR (target_type='check' AND EXISTS(SELECT 1 FROM payment_checks pc WHERE pc.id=reminders.target_id AND pc.deleted_at IS NULL AND pc.collection_status='pending')))";
-    List<ReminderRecord> pendingReminders(){ArrayList<ReminderRecord> out=new ArrayList<>();try(Cursor c=getReadableDatabase().rawQuery("SELECT id,trigger_at,advance_days,target_type FROM reminders WHERE deleted_at IS NULL AND fired_at IS NULL AND trigger_at>? AND "+ACTIVE_REMINDER+" ORDER BY trigger_at LIMIT 1000",new String[]{String.valueOf(System.currentTimeMillis())})){while(c.moveToNext())out.add(new ReminderRecord(c.getLong(0),c.getLong(1),c.getInt(2),c.getString(3)));}return out;}
+    List<ReminderRecord> pendingReminders(){
+        ArrayList<ReminderRecord> out=new ArrayList<>();long nowMillis=System.currentTimeMillis();
+        // One latest missed stage per target within 24 hours. Older stages remain history,
+        // never a queue of repeated alerts when the user reopens the application.
+        String window="(trigger_at>? OR (trigger_at>=? AND NOT EXISTS(SELECT 1 FROM reminders newer WHERE newer.target_type=reminders.target_type AND newer.target_id=reminders.target_id AND newer.deleted_at IS NULL AND newer.trigger_at<=? AND (newer.trigger_at>reminders.trigger_at OR (newer.trigger_at=reminders.trigger_at AND newer.id>reminders.id)))))";
+        try(Cursor c=getReadableDatabase().rawQuery("SELECT id,trigger_at,advance_days,target_type FROM reminders WHERE deleted_at IS NULL AND fired_at IS NULL AND "+window+" AND "+ACTIVE_REMINDER+" ORDER BY trigger_at LIMIT 1000",new String[]{String.valueOf(nowMillis),String.valueOf(nowMillis-86400000L),String.valueOf(nowMillis)})){
+            while(c.moveToNext())out.add(new ReminderRecord(c.getLong(0),Math.max(nowMillis+1000,c.getLong(1)),c.getInt(2),c.getString(3)));
+        }
+        return out;
+    }
     boolean fireReminder(long id){ContentValues v=new ContentValues();v.put("fired_at",now());v.put("updated_at",now());SQLiteDatabase db=getWritableDatabase();return db.update("reminders",v,"id=? AND fired_at IS NULL AND deleted_at IS NULL AND "+ACTIVE_REMINDER,new String[]{String.valueOf(id)})==1;}
     List<DeadlineRecord> deadlines(Long caseId,boolean openOnly){ArrayList<DeadlineRecord> list=new ArrayList<>();ArrayList<String> args=new ArrayList<>();StringBuilder w=new StringBuilder(" WHERE d.deleted_at IS NULL AND c.deleted_at IS NULL");if(caseId!=null){w.append(" AND d.case_id=?");args.add(String.valueOf(caseId));}if(openOnly)w.append(" AND d.completed=0");Cursor c=getReadableDatabase().rawQuery("SELECT d.id,d.case_id,d.title,d.event_date,d.due_date,d.duration_days,d.notes,d.completed,c.title,c.case_number,cl.name FROM deadlines d JOIN cases c ON c.id=d.case_id LEFT JOIN clients cl ON cl.id=COALESCE(d.client_id,c.client_id)"+w+" ORDER BY d.due_date,d.id",args.toArray(new String[0]));while(c.moveToNext())list.add(new DeadlineRecord(c.getLong(0),c.getLong(1),c.getString(2),c.getString(3),c.getString(4),c.getInt(5),c.getString(6),c.getInt(7),c.getString(8),c.getString(9),c.getString(10)));c.close();return list;}
 
     String clientFinancialText(long clientId){StringBuilder b=new StringBuilder();for(CaseRecord c:cases(null,"همه",clientId))b.append(caseFinancialText(c));return b.toString();}
+
+    static boolean inDateRange(String date,String start,String end){
+        if(start==null&&end==null)return true;
+        if(blank(date))return false;
+        try{date=JalaliDate.parse(date).value();}catch(IllegalArgumentException invalid){return false;}
+        return (start==null||date.compareTo(start)>=0)&&(end==null||date.compareTo(end)<=0);
+    }
+
+    String filteredFinancialText(String start,String end,Long clientId,Long caseId,String status,String caseCategory,boolean debtors,boolean overdueOnly,String kind,String category){
+        if(start!=null)start=JalaliDate.parse(start).value();if(end!=null)end=JalaliDate.parse(end).value();
+        if(start!=null&&end!=null&&start.compareTo(end)>0)throw new IllegalArgumentException("پایان بازه قبل از شروع است");
+        StringBuilder output=new StringBuilder();String today=JalaliDate.today().value();
+        for(CaseRecord c:cases(status,caseCategory,clientId)){
+            if(caseId!=null&&c.id!=caseId)continue;
+            if(debtors&&summary(c).debt<=0)continue;
+            ArrayList<InstallmentRecord> due=new ArrayList<>();
+            for(InstallmentRecord i:installments(c.id))if(i.dueDate.compareTo(today)<=0&&i.paid<i.amount&&inDateRange(i.dueDate,start,end))due.add(i);
+            if(overdueOnly&&due.isEmpty())continue;
+            StringBuilder details=new StringBuilder();long received=0,expenses=0;
+            for(LedgerRecord entry:ledger(c.id)){
+                if(!inDateRange(entry.date,start,end)||(kind!=null&&!kind.equals(entry.kind))||(category!=null&&!category.equals(entry.category)))continue;
+                if("expense".equals(entry.kind))expenses=Math.addExact(expenses,entry.amount);else received=Math.addExact(received,entry.amount);
+                details.append(entry.date).append(" | ").append(entry.category).append(" | ").append(entry.amount).append(" ریال | ").append("expense".equals(entry.kind)?"هزینه":"دریافت").append(" | پرداخت‌کننده: ").append(entry.paidBy).append("\n");
+            }
+            if(!"expense".equals(kind)&&(category==null||"حق‌الوکاله".equals(category))){
+                for(InstallmentRecord i:due)details.append("قسط سررسیدشده: ").append(i.title).append(" | ").append(i.dueDate).append(" | مانده: ").append(i.amount-i.paid).append(" ریال\n");
+                for(PaymentCheckRecord check:paymentChecks(c.id,end))if(inDateRange(check.dueDate,start,end))details.append("چک: ").append(check.number).append(" | ").append(check.dueDate).append(" | مبلغ: ").append(check.amount).append(" ریال | ").append(check.status).append("\n");
+            }
+            if(details.length()==0)continue;
+            output.append("پرونده: ").append(c.title).append(" | ").append(c.caseNumber).append("\nموکلان: ");
+            for(ClientRecord client:caseClients(c.id))output.append(client.name).append("؛ ");
+            output.append("\nجمع دریافت در نتیجه فیلتر: ").append(received).append(" ریال | جمع هزینه در نتیجه فیلتر: ").append(expenses).append(" ریال\n").append(details).append("\n");
+        }
+        return output.length()==0?"نتیجه‌ای مطابق فیلتر وجود ندارد.":output.toString();
+    }
     String caseFinancialText(CaseRecord c){StringBuilder b=new StringBuilder();AccountSummary s=summary(c);b.append("صورت‌حساب موردی پرونده در تاریخ ").append(JalaliDate.today().value()).append("\nموکل: ").append(c.clientName).append(" | پرونده: ").append(c.title).append(" | شماره: ").append(c.caseNumber).append("\nقرارداد شماره ").append(c.contractNumber).append(" مورخ ").append(c.contractDate).append("\nتوافق حق‌الوکاله: ").append(s.agreed).append(" ریال؛ دریافتی: ").append(s.received).append(" ریال\nهزینه‌ها: ").append(s.expenses).append(" ریال؛ هزینه پرداختی وکیل: ").append(s.lawyerPaid).append(" ریال؛ بدهی: ").append(s.debt).append(" ریال؛ بستانکاری موکل: ").append(s.credit).append(" ریال\nقرارداد/توافق: ").append(c.contractNotes).append(" / ").append(c.agreementNotes).append("\nاقساط:\n");for(InstallmentRecord i:installments(c.id))b.append(i.dueDate).append(" | ").append(i.title).append(" | تعهد: ").append(i.amount).append(" ریال | پرداخت: ").append(i.paid).append(" ریال | مانده: ").append(i.amount-i.paid).append(" ریال\n");long planned=0,allocated=0;for(InstallmentRecord i:installments(c.id)){planned+=i.amount;allocated+=i.paid;}b.append("جمع اقساط: ").append(planned).append(" ریال | مبلغ توافقی: ").append(s.agreed).append(" ریال | دریافت خارج از اقساط: ").append(Math.max(0,s.received-allocated)).append(" ریال\nریز دریافت‌ها و مخارج:\n");
         for(LedgerRecord l:ledger(c.id))b.append(l.date).append(" | ").append("expense".equals(l.kind)?"هزینه":"دریافت").append(" | ").append(l.category).append(" | ").append(l.amount).append(" ریال | پرداخت‌کننده: ").append(l.paidBy).append(" | ").append(l.description).append("\n");b.append("\nاین صورت‌حساب پیش از امضا باید با اسناد و قرارداد پرونده تطبیق داده شود.\nنام و امضای موکل: ........................  تاریخ: .................\nنام و امضای وکیل: ........................  تاریخ: .................\n\n");return b.toString();}
 
     String performanceText(Long caseId,Long clientId){StringBuilder b=new StringBuilder();ArrayList<Long> ids=new ArrayList<>();for(CaseRecord c:cases(null,"همه",clientId))if(caseId==null||c.id==caseId){ids.add(c.id);b.append("پرونده: ").append(c.title).append(" | شماره: ").append(c.caseNumber).append(" | موکل: ").append(c.clientName).append("\n");for(WorkLogRecord x:workLogs(c.id,null))b.append(x.date).append(" | اقدام: ").append(x.type).append(" | ").append(x.description).append("\n");for(AppointmentRecord a:appointments(null))if(a.caseId==c.id)b.append(a.date).append(" | ").append(a.start).append(" تا ").append(a.end).append(" | ").append(a.kind).append(" | ").append(a.person).append(" | ").append(a.place).append("\n");for(LedgerRecord l:ledger(c.id))if("expense".equals(l.kind)&&"وکیل".equals(l.paidBy))b.append(l.date).append(" | هزینه پرداختی وکیل: ").append(l.category).append(" | ").append(l.amount).append(" ریال | ").append(l.description).append("\n");b.append("\n");}if(caseId==null&&clientId!=null)for(AppointmentRecord a:appointments(null))if(a.caseId==0&&a.clientId==clientId)b.append(a.date).append(" | ").append(a.start).append(" تا ").append(a.end).append(" | ").append(a.kind).append(" | ").append(a.person).append(" | ").append(a.place).append("\n");return b.toString();}
 
-    int countDemoRows(){int total=0;for(String table:new String[]{"clients","cases","tasks","ledger","worklogs","appointments","deadlines","installments","installment_payments","case_clients","collaborators","case_collaborators","representation_contracts","contract_clients","contract_collaborators","financial_contracts","payment_checks","case_attachments"})total+=scalar("SELECT COUNT(*) FROM "+table+" WHERE is_demo=1 AND deleted_at IS NULL",null);return total;}
+    private static final String[] DEMO_TABLES={"clients","cases","tasks","ledger","worklogs","appointments","deadlines","installments","installment_payments","case_clients","collaborators","case_collaborators","representation_contracts","contract_clients","contract_collaborators","financial_contracts","payment_checks","case_attachments"};
+    int countDemoRows(){int total=0;for(String table:DEMO_TABLES)total+=scalar("SELECT COUNT(*) FROM "+table+" WHERE is_demo=1 AND deleted_at IS NULL",null);return total;}
+
+    /** User data may refer to a sample case. Keep that parent and its essential links
+     * instead of making real ledger entries or contracts disappear from the UI. */
+    private void preserveRealDependencies(SQLiteDatabase database){
+        java.util.Set<String> allowed=new java.util.HashSet<>(java.util.Arrays.asList(DEMO_TABLES));
+        for(int pass=0;pass<DEMO_TABLES.length;pass++){
+            int changed=0;
+            database.execSQL("UPDATE case_clients SET is_demo=0,updated_at=? WHERE is_demo=1 AND deleted_at IS NULL AND (case_id IN(SELECT id FROM cases WHERE is_demo=0 AND deleted_at IS NULL) OR client_id IN(SELECT id FROM clients WHERE is_demo=0 AND deleted_at IS NULL))",new Object[]{now()});
+            try(Cursor count=database.rawQuery("SELECT changes()",null)){if(count.moveToFirst())changed+=count.getInt(0);}
+            for(String child:DEMO_TABLES)try(Cursor keys=database.rawQuery("PRAGMA foreign_key_list("+child+")",null)){
+                while(keys.moveToNext()){
+                    String parent=keys.getString(2),column=keys.getString(3);if(!allowed.contains(parent))continue;
+                    database.execSQL("UPDATE "+parent+" SET is_demo=0,updated_at=? WHERE is_demo=1 AND deleted_at IS NULL AND id IN(SELECT "+column+" FROM "+child+" WHERE is_demo=0 AND deleted_at IS NULL)",new Object[]{now()});
+                    try(Cursor count=database.rawQuery("SELECT changes()",null)){if(count.moveToFirst())changed+=count.getInt(0);}
+                }
+            }
+            if(changed==0)break;
+        }
+    }
     int countLegalDocuments(){return scalar("SELECT COUNT(*) FROM legal_documents WHERE deleted_at IS NULL",null);}
     List<LegalDocumentRecord> searchLegalDocuments(String query){ArrayList<LegalDocumentRecord> out=new ArrayList<>();String q="%"+(query==null?"":query.trim())+"%";try(Cursor c=getReadableDatabase().rawQuery("SELECT id,kind,title,number,subject,body,source_url,content_version FROM legal_documents WHERE deleted_at IS NULL AND (?='%%' OR title LIKE ? OR number LIKE ? OR subject LIKE ? OR body LIKE ?) ORDER BY title LIMIT 250",new String[]{q,q,q,q,q})){while(c.moveToNext())out.add(new LegalDocumentRecord(c.getLong(0),c.getString(1),c.getString(2),c.getString(3),c.getString(4),c.getString(5),c.getString(6),c.getString(7)));}return out;}
-    void softDeleteDemoData(){SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{String t=now();ContentValues tomb=new ContentValues();tomb.put("deleted_at",t);tomb.put("updated_at",t);for(String table:new String[]{"installment_payments","contract_collaborators","contract_clients","case_collaborators","case_clients","case_attachments","payment_checks","installments","financial_contracts","representation_contracts","appointments","deadlines","tasks","ledger","worklogs","collaborators","cases","clients"})db.update(table,tomb,"is_demo=1 AND deleted_at IS NULL",null);db.setTransactionSuccessful();}finally{db.endTransaction();}}
+    void softDeleteDemoData(){SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{preserveRealDependencies(db);String t=now();ContentValues tomb=new ContentValues();tomb.put("deleted_at",t);tomb.put("updated_at",t);for(String table:new String[]{"installment_payments","contract_collaborators","contract_clients","case_collaborators","case_clients","case_attachments","payment_checks","installments","financial_contracts","representation_contracts","appointments","deadlines","tasks","ledger","worklogs","collaborators","cases","clients"})db.update(table,tomb,"is_demo=1 AND deleted_at IS NULL",null);db.setTransactionSuccessful();}finally{db.endTransaction();}}
     List<DeletedRecord> deletedRecords(){ArrayList<DeletedRecord> out=new ArrayList<>();try(Cursor c=getReadableDatabase().rawQuery("SELECT 'case',id,title,deleted_at FROM cases WHERE deleted_at IS NOT NULL UNION ALL SELECT 'client',id,name,deleted_at FROM clients WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC",null)){while(c.moveToNext())out.add(new DeletedRecord(c.getString(0),c.getLong(1),c.getString(2),c.getString(3)));}return out;}
     void restoreCase(long id){SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{String deleted;try(Cursor c=db.rawQuery("SELECT deleted_at FROM cases WHERE id=? AND deleted_at IS NOT NULL",new String[]{String.valueOf(id)})){if(!c.moveToFirst())throw new IllegalArgumentException("پرونده حذف‌شده یافت نشد");deleted=c.getString(0);}ContentValues live=new ContentValues();live.putNull("deleted_at");live.put("updated_at",now());db.update("contract_clients",live,"contract_id IN(SELECT id FROM representation_contracts WHERE case_id=?) AND deleted_at=?",new String[]{String.valueOf(id),deleted});db.update("contract_collaborators",live,"contract_id IN(SELECT id FROM representation_contracts WHERE case_id=?) AND deleted_at=?",new String[]{String.valueOf(id),deleted});for(String table:new String[]{"tasks","ledger","worklogs","appointments","deadlines","installments","case_clients","case_collaborators","representation_contracts","financial_contracts","payment_checks","case_attachments"})db.update(table,live,"case_id=? AND deleted_at=?",new String[]{String.valueOf(id),deleted});db.update("installment_payments",live,"installment_id IN(SELECT id FROM installments WHERE case_id=?) AND deleted_at=?",new String[]{String.valueOf(id),deleted});db.update("cases",live,"id=?",new String[]{String.valueOf(id)});db.setTransactionSuccessful();}finally{db.endTransaction();}}
     void restoreClient(long id){ContentValues live=new ContentValues();live.putNull("deleted_at");live.put("updated_at",now());if(getWritableDatabase().update("clients",live,"id=? AND deleted_at IS NOT NULL",new String[]{String.valueOf(id)})!=1)throw new IllegalArgumentException("موکل حذف‌شده یافت نشد");}

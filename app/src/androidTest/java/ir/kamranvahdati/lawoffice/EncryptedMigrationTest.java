@@ -31,7 +31,7 @@ public class EncryptedMigrationTest {
         previous.getWritableDatabase().execSQL("ALTER TABLE cases DROP COLUMN judgment_number");
         previous.getWritableDatabase().execSQL("ALTER TABLE cases DROP COLUMN order_number");
         previous.getWritableDatabase().setVersion(10);previous.close();
-        OfficeDb upgraded=new OfficeDb(context);assertEquals(12,upgraded.getReadableDatabase().getVersion());
+        OfficeDb upgraded=new OfficeDb(context);assertEquals(13,upgraded.getReadableDatabase().getVersion());
         boolean judgment=false,order=false;try(Cursor c=upgraded.getReadableDatabase().rawQuery("PRAGMA table_info(cases)",null)){while(c.moveToNext()){judgment|="judgment_number".equals(c.getString(1));order|="order_number".equals(c.getString(1));}}
         assertTrue(judgment);assertTrue(order);assertEquals(1,upgraded.cases(null,"همه",realClient).size());assertEquals(realCaseId,upgraded.cases(null,"همه",realClient).get(0).id);
         assertTrue(upgraded.addCaseAttachment(realCaseId,"نمونه.pdf","application/pdf","content://test/upgrade")>0);upgraded.close();
@@ -60,7 +60,7 @@ public class EncryptedMigrationTest {
         assertEquals(1,db.countClients());
         assertEquals(1,db.cases(null,"همه",null).size());
         assertEquals(1,db.caseClients(1).size());
-        try(Cursor c=db.getReadableDatabase().rawQuery("PRAGMA user_version",null)){assertTrue(c.moveToFirst());assertEquals(12,c.getInt(0));}
+        try(Cursor c=db.getReadableDatabase().rawQuery("PRAGMA user_version",null)){assertTrue(c.moveToFirst());assertEquals(13,c.getInt(0));}
         try(Cursor c=db.getReadableDatabase().rawQuery("SELECT COUNT(*) FROM clients WHERE uid IS NULL",null)){assertTrue(c.moveToFirst());assertEquals(0,c.getInt(0));}
         byte[] header=new byte[16];try(FileInputStream in=new FileInputStream(context.getDatabasePath(OfficeDb.ENCRYPTED_NAME))){assertEquals(16,in.read(header));}
         assertFalse(Arrays.equals("SQLite format 3\u0000".getBytes("UTF-8"),header));
