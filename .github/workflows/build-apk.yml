@@ -33,12 +33,12 @@ jobs:
           java -cp /tmp/klo-date-test ir.kamranvahdati.lawoffice.DeadlineDateSmokeTest
           java -cp /tmp/klo-date-test ir.kamranvahdati.lawoffice.InputValidatorsSmokeTest
       - name: Build release APK
-        run: gradle assembleRelease
+        run: gradle assembleRelease assemblePreview
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Kamran-Law-Office-APK-api-${{ matrix.api }}
-          path: app/build/outputs/apk/release/app-release.apk
+          path: app/build/outputs/apk/preview/app-preview.apk
           if-no-files-found: error
           retention-days: 30
       - name: Enable hardware acceleration for Android emulator
@@ -65,6 +65,9 @@ jobs:
             gradle connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=ir.kamranvahdati.lawoffice.UiFlowSmokeTest --stacktrace
             adb shell wm size reset
             adb pull /sdcard/Android/data/ir.kamranvahdati.lawoffice/files/qa app/build/qa
+            adb install -r app/build/outputs/apk/preview/app-preview.apk
+            adb shell am start -W -n ir.kamranvahdati.lawoffice.preview/ir.kamranvahdati.lawoffice.MainActivity
+            adb shell pidof ir.kamranvahdati.lawoffice.preview
       - name: Preserve test evidence
         if: always()
         uses: actions/upload-artifact@v4

@@ -17,12 +17,20 @@ android {
         targetSdk 35
         versionCode 11
         versionName "0.9.1"
+        manifestPlaceholders = [appLabel: "@string/app_name"]
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
     buildTypes {
         release {
             minifyEnabled false
             signingConfig signingConfigs.debug
+        }
+        preview {
+            initWith release
+            applicationIdSuffix ".preview"
+            versionNameSuffix "-preview"
+            matchingFallbacks = ["release"]
+            manifestPlaceholders = [appLabel: "وکیل من — آزمایشی ۹.۱"]
         }
     }
 }

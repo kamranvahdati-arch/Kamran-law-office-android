@@ -36,18 +36,28 @@ public class UiFlowSmokeTest {
                     instrumentation.runOnMainSync(screen);instrumentation.waitForIdleSync();assertTrue(activity.page.getChildCount()>0);
                 }
                 instrumentation.runOnMainSync(()->activity.addAppointment(JalaliDate.today().value()));
-                instrumentation.waitForIdleSync();assertNotNull(instrumentation.getUiAutomation().getRootInActiveWindow());
+                awaitActiveWindow(instrumentation,"appointment dialog: "+theme);
                 instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
                 instrumentation.runOnMainSync(()->activity.showTimePicker(activity.input("زمان آزمون")));
-                instrumentation.waitForIdleSync();assertNotNull(instrumentation.getUiAutomation().getRootInActiveWindow());
+                awaitActiveWindow(instrumentation,"time picker: "+theme);
                 instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
                 instrumentation.runOnMainSync(()->activity.showJalaliPicker(activity.input("تاریخ آزمون")));
-                instrumentation.waitForIdleSync();assertNotNull(instrumentation.getUiAutomation().getRootInActiveWindow());
+                awaitActiveWindow(instrumentation,"Jalali picker: "+theme);
                 instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
                 instrumentation.runOnMainSync(activity::settings);instrumentation.waitForIdleSync();
                 capture(instrumentation,activity,theme+"-settings");
             } finally {instrumentation.runOnMainSync(activity::finish);instrumentation.waitForIdleSync();}
         }
+    }
+    private void awaitActiveWindow(Instrumentation instrumentation,String label) throws Exception {
+        instrumentation.waitForIdleSync();
+        long deadline=android.os.SystemClock.uptimeMillis()+5000;
+        do {
+            android.view.accessibility.AccessibilityNodeInfo root=instrumentation.getUiAutomation().getRootInActiveWindow();
+            if(root!=null){root.recycle();return;}
+            Thread.sleep(100);
+        } while(android.os.SystemClock.uptimeMillis()<deadline);
+        fail("No accessible active window after 5 seconds: "+label);
     }
     private void capture(Instrumentation instrumentation,MainActivity activity,String name) throws Exception {
         Bitmap[] bitmap=new Bitmap[1];
