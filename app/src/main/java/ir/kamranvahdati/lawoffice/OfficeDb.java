@@ -602,6 +602,22 @@ final class OfficeDb extends SQLiteOpenHelper {
         getWritableDatabase().update("appointments",v,"id=?",new String[]{String.valueOf(id)});
     }
 
+    long saveAppointment(String kind,String person,String phone,Long clientId,Long caseId,String date,String start,String end,String place,String notes,String branch,String authority,String city) {
+        date=JalaliDate.parse(date).value();start=InputValidators.normalizeClock(start);
+        end=blank(end)?"":InputValidators.normalizeClock(end);
+        if(!blank(end)&&end.compareTo(start)<=0)throw new IllegalArgumentException("پایان باید بعد از شروع باشد");
+        if(caseId!=null&&clientId!=null&&!isClientLinked(caseId,clientId))throw new IllegalArgumentException("موکل به پرونده مرتبط نیست");
+        SQLiteDatabase database=getWritableDatabase();database.beginTransaction();
+        try{long id=addAppointment(kind,person,phone,clientId,caseId,date,start,end,place,notes);setAppointmentLocation(id,branch,authority,city);database.setTransactionSuccessful();return id;}finally{database.endTransaction();}
+    }
+
+    long saveDeadline(long caseId,Long clientId,String title,String eventDate,String dueDate,int duration,String notes) {
+        eventDate=JalaliDate.parse(eventDate).value();dueDate=JalaliDate.parse(dueDate).value();
+        if(JalaliDate.daysBetween(eventDate,dueDate)<0||duration<1||duration>3650)throw new IllegalArgumentException("بازه مهلت معتبر نیست");
+        SQLiteDatabase database=getWritableDatabase();database.beginTransaction();
+        try{long id=addDeadline(caseId,title,eventDate,dueDate,duration,notes);setDeadlineClient(id,caseId,clientId);database.setTransactionSuccessful();return id;}finally{database.endTransaction();}
+    }
+
     void setDeadlineClient(long id,long caseId,Long clientId) {
         if(clientId!=null&&!isClientLinked(caseId,clientId))throw new IllegalArgumentException("موکل به این پرونده مرتبط نیست");
         ContentValues v=new ContentValues();if(clientId==null)v.putNull("client_id");else v.put("client_id",clientId);v.put("updated_at",now());

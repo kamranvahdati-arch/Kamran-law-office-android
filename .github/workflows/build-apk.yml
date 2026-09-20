@@ -8,6 +8,10 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [30, 35]
     permissions:
       contents: write
     steps:
@@ -33,7 +37,7 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Kamran-Law-Office-APK
+          name: Kamran-Law-Office-APK-api-${{ matrix.api }}
           path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 30
@@ -47,7 +51,7 @@ jobs:
         if: github.event_name == 'pull_request'
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 30
+          api-level: ${{ matrix.api }}
           arch: x86_64
           target: google_apis
           disable-animations: false
@@ -56,8 +60,17 @@ jobs:
             adb wait-for-device
             adb shell getprop sys.boot_completed
             gradle connectedDebugAndroidTest --stacktrace
+      - name: Preserve test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Android-test-evidence-api-${{ matrix.api }}
+          path: |
+            app/build/reports/androidTests
+            app/build/outputs/androidTest-results
+          if-no-files-found: ignore
       - name: Publish APK plus ZIP
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && matrix.api == 30
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
