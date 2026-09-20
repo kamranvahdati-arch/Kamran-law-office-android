@@ -10,6 +10,24 @@ import org.junit.runner.RunWith;
 
 @RunWith(AndroidJUnit4.class)
 public class ScheduleMigrationTest {
+    @Test public void editingSessionDetailsPreservesTimeAndRemindersAndRejectsUnrelatedClient() {
+        Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();context.deleteDatabase(OfficeDb.ENCRYPTED_NAME);
+        OfficeDb db=new OfficeDb(context);
+        try {
+            String date=JalaliDate.addDays(JalaliDate.today().value(),3);
+            long id=db.saveAppointment("جلسه دادگاه","موکل فرضی","",1L,1L,date,"13:25","14:10","نشانی قبلی","یادداشت قبلی","۱","مرجع فرضی","تهران");
+            long reminder=db.addCustomReminder("appointment",id,date,"08:15","آماده‌سازی");
+            long at=0;for(OfficeDb.ReminderRecord r:db.remindersFor("appointment",id))if(r.id==reminder)at=r.at;
+            db.editAppointmentDetails(id,"مراجعه به دادگاه","موکل فرضی","",1L,1L,"نشانی جدید","اصلاح توضیحات","۲","مرجع جدید","کرج");
+            OfficeDb.AppointmentRecord actual=null;for(OfficeDb.AppointmentRecord r:db.appointments(null))if(r.id==id)actual=r;
+            assertNotNull(actual);assertEquals(date,actual.date);assertEquals("13:25",actual.start);assertEquals("14:10",actual.end);
+            assertEquals("۲",actual.branch);assertEquals("کرج",actual.city);assertEquals("planned",actual.attendance);
+            boolean retained=false;for(OfficeDb.ReminderRecord r:db.remindersFor("appointment",id))if(r.id==reminder){assertEquals(at,r.at);retained=true;}assertTrue(retained);
+            long unrelated=db.addClient("شخص فرضی مستقل","","","","","","");
+            try{db.editAppointmentDetails(id,"نامعتبر","شخص فرضی","",unrelated,1L,"","","","","");fail("unrelated client accepted");}catch(IllegalArgumentException expected){}
+            for(OfficeDb.AppointmentRecord r:db.appointments(null))if(r.id==id){assertEquals(1L,r.clientId);assertEquals("مراجعه به دادگاه",r.kind);assertEquals("۲",r.branch);}
+        } finally {db.close();}
+    }
     @Test public void additiveUpgradePreservesDatesAndCustomRemindersDoNotDuplicate() {
         Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
         context.deleteDatabase(OfficeDb.ENCRYPTED_NAME);

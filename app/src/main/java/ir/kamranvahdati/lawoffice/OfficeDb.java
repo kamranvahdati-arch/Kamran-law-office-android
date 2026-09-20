@@ -678,6 +678,22 @@ final class OfficeDb extends SQLiteOpenHelper {
         try{long id=addAppointment(kind,person,phone,clientId,caseId,date,start,end,place,notes);setAppointmentLocation(id,branch,authority,city);database.setTransactionSuccessful();return id;}finally{database.endTransaction();}
     }
 
+    void editAppointmentDetails(long id,String kind,String person,String phone,Long clientId,Long caseId,String place,String notes,String branch,String authority,String city) {
+        if(blank(kind)||blank(person))throw new IllegalArgumentException("نوع جلسه و نام مراجعه‌کننده لازم است");
+        SQLiteDatabase database=getWritableDatabase();database.beginTransaction();
+        try {
+            if(clientId!=null&&scalarArgs("SELECT COUNT(*) FROM clients WHERE id=? AND deleted_at IS NULL",new String[]{String.valueOf(clientId)})!=1)throw new IllegalArgumentException("موکل در دسترس نیست");
+            if(caseId!=null&&scalarArgs("SELECT COUNT(*) FROM cases WHERE id=? AND deleted_at IS NULL",new String[]{String.valueOf(caseId)})!=1)throw new IllegalArgumentException("پرونده در دسترس نیست");
+            if(caseId!=null&&clientId!=null&&!isClientLinked(caseId,clientId))throw new IllegalArgumentException("موکل به پرونده مرتبط نیست");
+            ContentValues v=new ContentValues();v.put("kind",kind.trim());v.put("person_name",person.trim());v.put("contact_phone",phone);
+            if(clientId==null)v.putNull("client_id");else v.put("client_id",clientId);
+            if(caseId==null)v.putNull("case_id");else v.put("case_id",caseId);
+            v.put("place",place);v.put("notes",notes);v.put("branch",branch);v.put("authority",authority);v.put("city",city);v.put("updated_at",now());v.put("is_demo",0);
+            if(database.update("appointments",v,"id=? AND deleted_at IS NULL",new String[]{String.valueOf(id)})!=1)throw new IllegalArgumentException("جلسه در دسترس نیست");
+            database.setTransactionSuccessful();
+        } finally {database.endTransaction();}
+    }
+
     long saveDeadline(long caseId,Long clientId,String title,String eventDate,String dueDate,int duration,String notes) {
         eventDate=JalaliDate.parse(eventDate).value();dueDate=JalaliDate.parse(dueDate).value();
         if(JalaliDate.daysBetween(eventDate,dueDate)<0||duration<1||duration>3650)throw new IllegalArgumentException("بازه مهلت معتبر نیست");

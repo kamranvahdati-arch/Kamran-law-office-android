@@ -196,12 +196,34 @@ public class MainActivity extends Activity {
     return card;
   }
   void scheduleActions(String type,long id,String date,String start,String end){
-    String[] options="appointment".equals(type)?new String[]{"انجام شد","لغو موعد","فعال‌سازی مجدد","تغییر تاریخ / ساعت","عدم حضور"}:new String[]{"انجام شد","لغو موعد","فعال‌سازی مجدد","تغییر تاریخ / ساعت"};
+    String[] options="appointment".equals(type)?new String[]{"انجام شد","لغو موعد","فعال‌سازی مجدد","تغییر تاریخ / ساعت","عدم حضور","ویرایش مشخصات جلسه"}:new String[]{"انجام شد","لغو موعد","فعال‌سازی مجدد","تغییر تاریخ / ساعت"};
     new AlertDialog.Builder(this).setTitle("تعیین تکلیف موعد").setItems(options,(d,n)->{
       if(n==3){changeScheduleForm(type,id,date,start,end);return;}
+      if(n==5){for(OfficeDb.AppointmentRecord a:db.appointments(null))if(a.id==id){editAppointmentDetails(a);return;}toast("جلسه در دسترس نیست");return;}
       String state=n==0?"completed":n==1?"cancelled":n==4?"absent":"planned";
       new AlertDialog.Builder(this).setTitle("تأیید تغییر وضعیت").setMessage(options[n]+"؟").setNegativeButton("انصراف",null).setPositiveButton("تأیید",(x,w)->{db.setScheduleStatus(type,id,state);ReminderReceiver.schedule(this);dashboard();}).show();
     }).show();
+  }
+  void editAppointmentDetails(OfficeDb.AppointmentRecord a){
+    List<OfficeDb.ClientRecord> clients=db.clients();List<OfficeDb.CaseRecord> cases=db.cases(null,"همه",null);
+    ArrayList<String> people=new ArrayList<>(),caseNames=new ArrayList<>();people.add("مراجعه‌کننده مستقل");caseNames.add("بدون پرونده");
+    for(OfficeDb.ClientRecord c:clients)people.add(c.name);for(OfficeDb.CaseRecord c:cases)caseNames.add(c.title);
+    Spinner client=spinner(people.toArray(new String[0])),casePick=spinner(caseNames.toArray(new String[0]));
+    for(int i=0;i<clients.size();i++)if(clients.get(i).id==a.clientId)client.setSelection(i+1);
+    for(int i=0;i<cases.size();i++)if(cases.get(i).id==a.caseId)casePick.setSelection(i+1);
+    LinearLayout f=form();EditText kind=input("نوع جلسه / فعالیت"),name=input("نام مراجعه‌کننده مستقل"),phone=input("تلفن مراجعه‌کننده مستقل"),branch=input("شعبه"),authority=input("مجتمع قضایی / مرجع"),city=input("شهر"),place=input("آدرس / محل"),notes=area("توضیحات");
+    kind.setText(a.kind);name.setText(a.person);phone.setText(a.phone);branch.setText(a.branch);authority.setText(a.authority);city.setText(a.city);place.setText(a.place);notes.setText(a.notes);
+    for(View view:new View[]{kind,client,casePick,name,phone,branch,authority,city,place,notes})f.addView(view);
+    f.addView(info("زمان و یادآوری","این فرم زمان جلسه و یادآوری‌ها را تغییر نمی‌دهد. برای زمان از گزینه «تغییر تاریخ / ساعت» استفاده کنید."));
+    AlertDialog dialog=new AlertDialog.Builder(this).setTitle("ویرایش مشخصات جلسه").setView(scroll(f)).setNegativeButton("انصراف",null).setPositiveButton("بررسی و ذخیره",null).create();
+    dialog.setOnShowListener(x->dialog.getButton(-1).setOnClickListener(v->{
+      new AlertDialog.Builder(this).setTitle("تأیید ویرایش جلسه").setMessage("مشخصات و ارتباط جلسه با موکل و پرونده ذخیره شود؟").setNegativeButton("بازگشت",null).setPositiveButton("ذخیره",(confirm,w)->{try{
+        OfficeDb.ClientRecord selected=client.getSelectedItemPosition()==0?null:clients.get(client.getSelectedItemPosition()-1);
+        Long caseId=casePick.getSelectedItemPosition()==0?null:cases.get(casePick.getSelectedItemPosition()-1).id;
+        db.editAppointmentDetails(a.id,kind.getText().toString(),selected==null?name.getText().toString():selected.name,selected==null?phone.getText().toString():selected.phone,selected==null?null:selected.id,caseId,place.getText().toString(),notes.getText().toString(),branch.getText().toString(),authority.getText().toString(),city.getText().toString());
+        dialog.dismiss();appointmentList(null);
+      }catch(Exception e){toast(e.getMessage());}}).show();
+    }));dialog.show();
   }
   void changeScheduleForm(String type,long id,String previousDate,String previousStart,String previousEnd){
     LinearLayout f=form();EditText date=input("تاریخ شمسی"),start=input("ساعت شروع"),end=input("ساعت پایان (اختیاری)");
