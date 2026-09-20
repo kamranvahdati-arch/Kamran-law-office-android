@@ -8,14 +8,15 @@ dependencies {
 }
 
 android {
+    buildFeatures { buildConfig true }
     namespace "ir.kamranvahdati.lawoffice"
     compileSdk 35
     defaultConfig {
         applicationId "ir.kamranvahdati.lawoffice"
         minSdk 24
         targetSdk 35
-        versionCode 10
-        versionName "0.9.0"
+        versionCode 11
+        versionName "0.9.1"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
     buildTypes {

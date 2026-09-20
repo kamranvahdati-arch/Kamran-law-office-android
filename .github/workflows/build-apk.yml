@@ -61,7 +61,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp app/build/outputs/apk/release/app-release.apk Kamran-Law-Office-v0.9.0-test.apk
-          zip -j Kamran-Law-Office-v0.9.0-test.zip Kamran-Law-Office-v0.9.0-test.apk
+          cp app/build/outputs/apk/release/app-release.apk Kamran-Law-Office-v0.9.1-test.apk
+          zip -j Kamran-Law-Office-v0.9.1-test.zip Kamran-Law-Office-v0.9.1-test.apk
           gh release view latest-preview >/dev/null 2>&1 || gh release create latest-preview --title "نسخه آزمایشی دفتر وکالت" --notes "نسخه عمومی آزمایشی با امضای توسعه؛ داده‌های دمو قابل حذف‌اند. این فایل release تولیدی و امضاشده تجاری نیست."
-          gh release upload latest-preview Kamran-Law-Office-v0.9.0-test.apk Kamran-Law-Office-v0.9.0-test.zip --clobber
+          gh release upload latest-preview Kamran-Law-Office-v0.9.1-test.apk Kamran-Law-Office-v0.9.1-test.zip --clobber

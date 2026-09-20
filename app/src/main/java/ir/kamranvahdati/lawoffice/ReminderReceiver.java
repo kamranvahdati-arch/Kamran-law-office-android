@@ -40,12 +40,12 @@ final public class ReminderReceiver extends BroadcastReceiver {
         if(!manager.areNotificationsEnabled())return;
         if(Build.VERSION.SDK_INT>=26)manager.createNotificationChannel(new NotificationChannel(CHANNEL,"یادآوری‌های دفتر وکالت",NotificationManager.IMPORTANCE_HIGH));
         if(Build.VERSION.SDK_INT>=26&&manager.getNotificationChannel(CHANNEL).getImportance()==NotificationManager.IMPORTANCE_NONE)return;
-        OfficeDb db=new OfficeDb(context);boolean valid;try{valid=db.fireReminder(id);}finally{db.close();}if(!valid)return;
+        OfficeDb db=new OfficeDb(context);boolean valid;String reminderLabel;try{reminderLabel=db.reminderLabel(id);valid=db.fireReminder(id);}finally{db.close();}if(!valid)return;
         int days=intent.getIntExtra("days",0);String kind=intent.getStringExtra("kind");String label="deadline".equals(kind)?"مهلت پرونده":"appointment".equals(kind)?"قرار یا جلسه":"installment".equals(kind)?"سررسید قسط":"check".equals(kind)?"سررسید چک":"کار برنامه‌ریزی‌شده";
         Intent open=new Intent(context,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP);
         PendingIntent click=PendingIntent.getActivity(context,0,open,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
         Notification.Builder builder=Build.VERSION.SDK_INT>=26?new Notification.Builder(context,CHANNEL):new Notification.Builder(context);
-        Notification n=builder.setSmallIcon(android.R.drawable.ic_dialog_info).setContentTitle("یادآوری "+label).setContentText(days==0?"زمان ثبت‌شده امروز است؛ برنامه را بررسی کنید":"زمان ثبت‌شده تا "+days+" روز دیگر نزدیک می‌شود؛ برنامه را بررسی کنید").setContentIntent(click).setAutoCancel(true).setVisibility(Notification.VISIBILITY_PRIVATE).build();
+        Notification n=builder.setSmallIcon(android.R.drawable.ic_dialog_info).setContentTitle(reminderLabel==null||reminderLabel.isEmpty()?"یادآوری "+label:reminderLabel).setContentText(days==0?"زمان یادآوری ثبت‌شده فرا رسیده؛ برنامه را بررسی کنید":"زمان ثبت‌شده تا "+days+" روز دیگر نزدیک می‌شود؛ برنامه را بررسی کنید").setContentIntent(click).setAutoCancel(true).setVisibility(Notification.VISIBILITY_PRIVATE).build();
         manager.notify((int)id,n);
     }
 }
