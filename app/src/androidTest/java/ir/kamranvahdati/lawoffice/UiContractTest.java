@@ -21,6 +21,7 @@ public class UiContractTest {
     @Test public void darkShellKeepsSystemInsetsAndDateTimePickersDiscoverable() throws Exception {
         Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
         context.getSharedPreferences("office_profile",Context.MODE_PRIVATE).edit()
+                .putBoolean("notification_permission_prompted",true)
                 .putString("theme_id",AppTheme.DARK).putBoolean("dark",true)
                 .putString("name","وکیل آزمایشی").putString("professional_body","کانون وکلای دادگستری")
                 .putString("province","تهران").putString("city","تهران")

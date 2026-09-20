@@ -8,7 +8,7 @@ import org.junit.runner.RunWith;
 
 @RunWith(AndroidJUnit4.class)
 public class CheckAccountingTest {
-    @Test public void collectionAndReversalAreAtomicAndIdempotent() {
+    @Test public void collectionAndReversalAreAtomicAndIdempotent() throws Exception {
         Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
         context.deleteDatabase(OfficeDb.ENCRYPTED_NAME);
         OfficeDb db=new OfficeDb(context);db.getWritableDatabase();
@@ -25,6 +25,8 @@ public class CheckAccountingTest {
         long excessive=db.addPaymentCheck(1,installment,"TEST-2","1405/10/01",500,"بانک","شعبه","pending","");
         try{db.updatePaymentCheckStatus(excessive,"collected");fail("overpayment accepted");}catch(IllegalArgumentException expected){}
         for(OfficeDb.PaymentCheckRecord c:db.paymentChecks(1L,null))if(c.id==excessive)assertEquals("pending",c.status);
+        for(OfficeDb.InstallmentRecord i:db.installments(1))if(i.id==installment)assertEquals(600,i.paid);
+        String backup=db.exportJson();db.importJson(backup);
         for(OfficeDb.InstallmentRecord i:db.installments(1))if(i.id==installment)assertEquals(600,i.paid);
         db.close();
     }
