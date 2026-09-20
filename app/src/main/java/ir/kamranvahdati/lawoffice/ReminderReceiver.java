@@ -35,10 +35,12 @@ final public class ReminderReceiver extends BroadcastReceiver {
         if(!ACTION_REMINDER.equals(intent.getAction()))return;
         if(!context.getSharedPreferences("office_profile",Context.MODE_PRIVATE).getBoolean("notifications_enabled",true))return;
         long id=intent.getLongExtra("id",-1);if(id<0)return;
-        OfficeDb db=new OfficeDb(context);boolean valid=db.fireReminder(id);db.close();if(!valid)return;
         if(Build.VERSION.SDK_INT>=33&&context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)return;
         NotificationManager manager=(NotificationManager)context.getSystemService(Context.NOTIFICATION_SERVICE);if(manager==null)return;
-        if(Build.VERSION.SDK_INT>=26)manager.createNotificationChannel(new NotificationChannel(CHANNEL,"مهلت‌های قضایی",NotificationManager.IMPORTANCE_HIGH));
+        if(!manager.areNotificationsEnabled())return;
+        if(Build.VERSION.SDK_INT>=26)manager.createNotificationChannel(new NotificationChannel(CHANNEL,"یادآوری‌های دفتر وکالت",NotificationManager.IMPORTANCE_HIGH));
+        if(Build.VERSION.SDK_INT>=26&&manager.getNotificationChannel(CHANNEL).getImportance()==NotificationManager.IMPORTANCE_NONE)return;
+        OfficeDb db=new OfficeDb(context);boolean valid;try{valid=db.fireReminder(id);}finally{db.close();}if(!valid)return;
         int days=intent.getIntExtra("days",0);String kind=intent.getStringExtra("kind");String label="deadline".equals(kind)?"مهلت پرونده":"appointment".equals(kind)?"قرار یا جلسه":"installment".equals(kind)?"سررسید قسط":"check".equals(kind)?"سررسید چک":"کار برنامه‌ریزی‌شده";
         Intent open=new Intent(context,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TOP);
         PendingIntent click=PendingIntent.getActivity(context,0,open,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);
