@@ -72,21 +72,18 @@ jobs:
             adb install -r app/build/outputs/apk/preview/app-preview.apk
             adb shell am start -W -n ir.kamranvahdati.lawoffice.preview/ir.kamranvahdati.lawoffice.MainActivity
             adb shell pidof ir.kamranvahdati.lawoffice.preview
-      - name: Verify same-package upgrade from populated 9.1
-        if: github.event_name == 'pull_request'
-        run: |
-          git fetch origin codex/v091-deadlines-audit
-          git worktree add --detach "$RUNNER_TEMP/v091" FETCH_HEAD
-          gradle -p "$RUNNER_TEMP/v091" assembleRelease assembleDebugAndroidTest
-          adb uninstall ir.kamranvahdati.lawoffice || true
-          adb install "$RUNNER_TEMP/v091/app/build/outputs/apk/release/app-release.apk"
-          adb install "$RUNNER_TEMP/v091/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
-          adb shell am instrument -w -e class ir.kamranvahdati.lawoffice.ScheduleMigrationTest#editingSessionDetailsPreservesTimeAndRemindersAndRejectsUnrelatedClient ir.kamranvahdati.lawoffice.test/ir.kamranvahdati.lawoffice.OfficeTestRunner | tee app/build/upgrade-v091-seed.txt
-          grep -q 'OK (1 test)' app/build/upgrade-v091-seed.txt
-          adb install -r app/build/outputs/apk/release/app-release.apk
-          adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-          adb shell am instrument -w -e upgrade_mode true -e class ir.kamranvahdati.lawoffice.VokanoUpgradeTest#samePackageUpgradeRetainsExistingAppointmentAndDatabaseVersion ir.kamranvahdati.lawoffice.test/ir.kamranvahdati.lawoffice.OfficeTestRunner | tee app/build/upgrade-v10-result.txt
-          grep -q 'OK (1 test)' app/build/upgrade-v10-result.txt
+            git fetch origin codex/v091-deadlines-audit
+            git worktree add --detach "$RUNNER_TEMP/v091" FETCH_HEAD
+            gradle -p "$RUNNER_TEMP/v091" assembleRelease assembleDebugAndroidTest
+            adb uninstall ir.kamranvahdati.lawoffice || true
+            adb install "$RUNNER_TEMP/v091/app/build/outputs/apk/release/app-release.apk"
+            adb install "$RUNNER_TEMP/v091/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
+            adb shell am instrument -w -e class ir.kamranvahdati.lawoffice.ScheduleMigrationTest#editingSessionDetailsPreservesTimeAndRemindersAndRejectsUnrelatedClient ir.kamranvahdati.lawoffice.test/ir.kamranvahdati.lawoffice.OfficeTestRunner | tee app/build/upgrade-v091-seed.txt
+            grep -q 'OK (1 test)' app/build/upgrade-v091-seed.txt
+            adb install -r app/build/outputs/apk/release/app-release.apk
+            adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            adb shell am instrument -w -e upgrade_mode true -e class ir.kamranvahdati.lawoffice.VokanoUpgradeTest#samePackageUpgradeRetainsExistingAppointmentAndDatabaseVersion ir.kamranvahdati.lawoffice.test/ir.kamranvahdati.lawoffice.OfficeTestRunner | tee app/build/upgrade-v10-result.txt
+            grep -q 'OK (1 test)' app/build/upgrade-v10-result.txt
       - name: Preserve test evidence
         if: always()
         uses: actions/upload-artifact@v4
