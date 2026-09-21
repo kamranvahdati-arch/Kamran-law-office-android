@@ -35,9 +35,9 @@ public class UiContractTest {
         assertNotNull(activity.root);assertTrue("top inset",activity.root.getPaddingTop()>0);assertTrue("bottom inset",activity.root.getPaddingBottom()>0);
         int flags=activity.getWindow().getDecorView().getSystemUiVisibility();assertEquals(0,flags&View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);assertEquals(0,flags&View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
         InstrumentationRegistry.getInstrumentation().runOnMainSync(()->{
-            assertEquals("اپلیکیشن جامع و هوشمند وکیل من",activity.title.getText().toString());
-            assertEquals("میز کار امروز",activity.subtitle.getText().toString());
-            assertTrue("product title is above desk heading",activity.title.getTop()<activity.subtitle.getTop());
+            assertEquals("وکانو | VOKANO",activity.title.getText().toString());
+            assertEquals("سامانه هوشمند وکلای نوین",activity.subtitle.getText().toString());
+            assertTrue("brand is above product subtitle",activity.title.getTop()<activity.subtitle.getTop());
             View insetTarget=new View(activity);activity.safeArea(insetTarget);
             insetTarget.dispatchApplyWindowInsets(new WindowInsets.Builder().setSystemWindowInsets(Insets.of(31,42,27,48)).build());
             assertEquals(31,insetTarget.getPaddingLeft());assertEquals(27,insetTarget.getPaddingRight());

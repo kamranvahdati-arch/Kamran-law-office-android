@@ -26,7 +26,7 @@ final class AppTheme {
 
     static AppTheme from(String id) {
         if (DARK.equals(id)) return new AppTheme(DARK,"تیره حرفه‌ای",true,
-                rgb("111827"),rgb("7797FF"),rgb("0F141E"),rgb("1D2431"),rgb("283244"),rgb("EEF2FA"),rgb("ADB8CA"),rgb("3C4658"),Color.WHITE,rgb("E35D6A"),rgb("55C98E"),Color.WHITE);
+                rgb("0A2D5B"),rgb("00C2A8"),rgb("0D1726"),rgb("18283B"),rgb("26364B"),rgb("F2F8FC"),rgb("B6C6D8"),rgb("41556D"),Color.WHITE,rgb("FF7784"),rgb("70D7AD"),Color.WHITE);
         if (LEGAL.equals(id)) return new AppTheme(LEGAL,"رسمی وکالت",false,
                 rgb("28324A"),rgb("8A6D3B"),rgb("F4F1EA"),Color.WHITE,rgb("ECE7DD"),rgb("252B36"),rgb("626873"),rgb("D4CCBE"),Color.WHITE,rgb("B33D48"),rgb("32755A"),Color.WHITE);
         if (TURQUOISE.equals(id)) return new AppTheme(TURQUOISE,"فیروزه‌ای کانون",false,
@@ -34,7 +34,7 @@ final class AppTheme {
         if (BLACK_GOLD.equals(id)) return new AppTheme(BLACK_GOLD,"مشکی و طلایی",true,
                 rgb("101010"),rgb("C9A84E"),rgb("090909"),rgb("1A1A1A"),rgb("29251C"),rgb("F5F0E3"),rgb("BDB5A2"),rgb("3F392A"),Color.WHITE,rgb("DD6670"),rgb("68B987"),Color.WHITE);
         return new AppTheme(LIGHT,"روشن حرفه‌ای",false,
-                rgb("152446"),rgb("2D56D2"),rgb("F4F7FC"),Color.WHITE,rgb("EEF2FA"),rgb("182236"),rgb("5D6980"),rgb("D9E0EC"),Color.WHITE,rgb("D2454E"),rgb("1F8454"),Color.WHITE);
+                rgb("0A2D5B"),rgb("1478C8"),rgb("F3FAFC"),Color.WHITE,rgb("EAF3F7"),rgb("14293F"),rgb("536879"),rgb("D7E4EC"),Color.WHITE,rgb("BE2943"),rgb("096956"),Color.WHITE);
     }
 
     static String[] ids() { return new String[]{LIGHT,DARK,LEGAL,TURQUOISE,BLACK_GOLD}; }

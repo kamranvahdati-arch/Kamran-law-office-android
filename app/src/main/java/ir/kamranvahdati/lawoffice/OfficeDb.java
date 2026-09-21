@@ -590,11 +590,52 @@ final class OfficeDb extends SQLiteOpenHelper {
         while (c.moveToNext()) result.add(taskFrom(c)); c.close(); return result;
     }
 
+    List<TaskRecord> personalTasks() {
+        ArrayList<TaskRecord> result = new ArrayList<>();
+        try (Cursor c = getReadableDatabase().rawQuery("SELECT t.id,t.title,COALESCE(cs.title,cl.name,t.case_name),t.due_date,t.due_time," +
+                "t.priority,t.done,t.status,t.notes,t.kind,t.end_time,t.place,COALESCE(t.case_id,0),COALESCE(t.client_id,0) FROM tasks t LEFT JOIN cases cs ON cs.id=t.case_id LEFT JOIN clients cl ON cl.id=t.client_id WHERE t.deleted_at IS NULL AND (t.is_personal=1 OR t.kind=?) ORDER BY t.due_date DESC,t.due_time,t.id DESC",new String[]{"برنامه شخصی"})) {
+            while (c.moveToNext()) result.add(taskFrom(c));
+        }
+        return result;
+    }
+
+    void updateTaskDetails(long id,String title,String date,String start,String end,String place,String priority,String notes) {
+        String oldDate,oldTime;
+        try(Cursor existing=getReadableDatabase().rawQuery("SELECT due_date,due_time FROM tasks WHERE id=? AND deleted_at IS NULL",new String[]{String.valueOf(id)})) {
+            if(!existing.moveToFirst())throw new IllegalArgumentException("کار یافت نشد");
+            oldDate=existing.getString(0);oldTime=existing.getString(1);
+        }
+        ContentValues values=new ContentValues();values.put("title",title);values.put("due_date",date);
+        values.put("due_time",start);values.put("end_time",end);values.put("place",place);
+        values.put("priority",priority);values.put("notes",notes);values.put("updated_at",now());
+        SQLiteDatabase database=getWritableDatabase();database.beginTransaction();
+        try {
+            if(database.update("tasks",values,"id=? AND deleted_at IS NULL",new String[]{String.valueOf(id)})!=1)
+                throw new IllegalArgumentException("کار یافت نشد");
+            if(oldDate!=null&&!oldDate.isEmpty()) {
+                java.util.Calendar before=JalaliDate.calendar(oldDate),after=JalaliDate.calendar(date);
+                String previous=oldTime!=null&&oldTime.matches("[0-2][0-9]:[0-5][0-9]")?oldTime:"09:00";
+                String next=start!=null&&start.matches("[0-2][0-9]:[0-5][0-9]")?start:"09:00";
+                before.set(java.util.Calendar.HOUR_OF_DAY,Integer.parseInt(previous.substring(0,2)));
+                before.set(java.util.Calendar.MINUTE,Integer.parseInt(previous.substring(3,5)));
+                after.set(java.util.Calendar.HOUR_OF_DAY,Integer.parseInt(next.substring(0,2)));
+                after.set(java.util.Calendar.MINUTE,Integer.parseInt(next.substring(3,5)));
+                long delta=after.getTimeInMillis()-before.getTimeInMillis();
+                if(delta!=0)database.execSQL("UPDATE reminders SET trigger_at=trigger_at+?, fired_at=NULL, updated_at=? WHERE target_type='task' AND target_id=? AND deleted_at IS NULL",new Object[]{delta,now(),id});
+            }
+            database.setTransactionSuccessful();
+        } finally {database.endTransaction();}
+    }
+
     int countCases(String status) { return status==null?scalar("SELECT COUNT(*) FROM cases WHERE deleted_at IS NULL",null):scalar("SELECT COUNT(*) FROM cases WHERE deleted_at IS NULL AND status=?", status); }
     int countClients() { return scalar("SELECT COUNT(*) FROM clients WHERE deleted_at IS NULL", null); }
     int countToday(String date) { return scalar("SELECT COUNT(*) FROM tasks WHERE deleted_at IS NULL AND due_date=? AND done=0", date); }
     int countAllTasks() { return scalar("SELECT COUNT(*) FROM tasks WHERE deleted_at IS NULL", null); }
     int countAppointments(String date) { return scalar("SELECT COUNT(*) FROM appointments WHERE deleted_at IS NULL AND visit_date=?", date); }
+    int countFutureHearings(String date) { return scalar("SELECT COUNT(*) FROM appointments WHERE deleted_at IS NULL AND attendance_status='planned' AND visit_date>=? AND (kind='جلسه دادگاه' OR kind='جلسه رسیدگی')",date); }
+    int countOpenDeadlines() { return scalar("SELECT COUNT(*) FROM deadlines WHERE deleted_at IS NULL AND completed=0",null); }
+    int countPersonalTasks() { return scalar("SELECT COUNT(*) FROM tasks WHERE deleted_at IS NULL AND (is_personal=1 OR kind='برنامه شخصی')",null); }
+    int countConsultations() { return scalar("SELECT COUNT(*) FROM appointments WHERE deleted_at IS NULL AND kind LIKE '%مشاوره%'",null); }
     int countDeadlines(String date) { return scalar("SELECT COUNT(*) FROM deadlines WHERE deleted_at IS NULL AND completed=0 AND due_date<=?", date); }
     int taskCountInMonth(String prefix) { return scalar("SELECT COUNT(*) FROM tasks WHERE deleted_at IS NULL AND due_date LIKE ?", prefix + "%"); }
     int countOverdueTasks(String today){return scalar("SELECT COUNT(*) FROM tasks WHERE deleted_at IS NULL AND done=0 AND due_date<?",today);}

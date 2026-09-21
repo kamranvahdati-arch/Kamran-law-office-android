@@ -15,8 +15,8 @@ android {
         applicationId "ir.kamranvahdati.lawoffice"
         minSdk 24
         targetSdk 35
-        versionCode 11
-        versionName "0.9.1"
+        versionCode 12
+        versionName "10.0"
         manifestPlaceholders = [appLabel: "@string/app_name"]
         testInstrumentationRunner "ir.kamranvahdati.lawoffice.OfficeTestRunner"
     }
@@ -30,7 +30,7 @@ android {
             applicationIdSuffix ".preview"
             versionNameSuffix "-preview"
             matchingFallbacks = ["release"]
-            manifestPlaceholders = [appLabel: "وکیل من — آزمایشی ۹.۱"]
+            manifestPlaceholders = [appLabel: "وکانو — پیش‌نمایش"]
         }
     }
 }

@@ -17,6 +17,8 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
@@ -37,8 +39,10 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Kamran-Law-Office-APK-api-${{ matrix.api }}
-          path: app/build/outputs/apk/preview/app-preview.apk
+          name: VOKANO-10-APK-api-${{ matrix.api }}
+          path: |
+            app/build/outputs/apk/release/app-release.apk
+            app/build/outputs/apk/preview/app-preview.apk
           if-no-files-found: error
           retention-days: 30
       - name: Enable hardware acceleration for Android emulator
@@ -68,6 +72,21 @@ jobs:
             adb install -r app/build/outputs/apk/preview/app-preview.apk
             adb shell am start -W -n ir.kamranvahdati.lawoffice.preview/ir.kamranvahdati.lawoffice.MainActivity
             adb shell pidof ir.kamranvahdati.lawoffice.preview
+      - name: Verify same-package upgrade from populated 9.1
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch origin codex/v091-deadlines-audit
+          git worktree add --detach "$RUNNER_TEMP/v091" FETCH_HEAD
+          gradle -p "$RUNNER_TEMP/v091" assembleRelease assembleDebugAndroidTest
+          adb uninstall ir.kamranvahdati.lawoffice || true
+          adb install "$RUNNER_TEMP/v091/app/build/outputs/apk/release/app-release.apk"
+          adb install "$RUNNER_TEMP/v091/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
+          adb shell am instrument -w -e class ir.kamranvahdati.lawoffice.ScheduleMigrationTest#editingSessionDetailsPreservesTimeAndRemindersAndRejectsUnrelatedClient ir.kamranvahdati.lawoffice.test/ir.kamranvahdati.lawoffice.OfficeTestRunner | tee app/build/upgrade-v091-seed.txt
+          grep -q 'OK (1 test)' app/build/upgrade-v091-seed.txt
+          adb install -r app/build/outputs/apk/release/app-release.apk
+          adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          adb shell am instrument -w -e upgrade_mode true -e class ir.kamranvahdati.lawoffice.VokanoUpgradeTest#samePackageUpgradeRetainsExistingAppointmentAndDatabaseVersion ir.kamranvahdati.lawoffice.test/ir.kamranvahdati.lawoffice.OfficeTestRunner | tee app/build/upgrade-v10-result.txt
+          grep -q 'OK (1 test)' app/build/upgrade-v10-result.txt
       - name: Preserve test evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -79,13 +98,6 @@ jobs:
             app/build/qa
             app/build/full-test-report
             app/build/ui-smoke.txt
+            app/build/upgrade-v091-seed.txt
+            app/build/upgrade-v10-result.txt
           if-no-files-found: ignore
-      - name: Publish APK plus ZIP
-        if: github.ref == 'refs/heads/main' && matrix.api == 30
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          cp app/build/outputs/apk/release/app-release.apk Kamran-Law-Office-v0.9.1-test.apk
-          zip -j Kamran-Law-Office-v0.9.1-test.zip Kamran-Law-Office-v0.9.1-test.apk
-          gh release view latest-preview >/dev/null 2>&1 || gh release create latest-preview --title "نسخه آزمایشی دفتر وکالت" --notes "نسخه عمومی آزمایشی با امضای توسعه؛ داده‌های دمو قابل حذف‌اند. این فایل release تولیدی و امضاشده تجاری نیست."
-          gh release upload latest-preview Kamran-Law-Office-v0.9.1-test.apk Kamran-Law-Office-v0.9.1-test.zip --clobber
