@@ -196,13 +196,28 @@ public class MainActivity extends Activity {
     return card;
   }
   void scheduleActions(String type,long id,String date,String start,String end){
-    String[] options="appointment".equals(type)?new String[]{"انجام شد","لغو موعد","فعال‌سازی مجدد","تغییر تاریخ / ساعت","عدم حضور","ویرایش مشخصات جلسه"}:new String[]{"انجام شد","لغو موعد","فعال‌سازی مجدد","تغییر تاریخ / ساعت"};
+    String[] options="appointment".equals(type)?new String[]{"انجام شد","لغو موعد","فعال‌سازی مجدد","تغییر تاریخ / ساعت","عدم حضور","ویرایش مشخصات جلسه"}:new String[]{"انجام شد","لغو موعد","فعال‌سازی مجدد","تغییر تاریخ / ساعت","ویرایش مشخصات مهلت"};
     new AlertDialog.Builder(this).setTitle("تعیین تکلیف موعد").setItems(options,(d,n)->{
       if(n==3){changeScheduleForm(type,id,date,start,end);return;}
+      if(n==4&&"deadline".equals(type)){for(OfficeDb.DeadlineRecord record:db.deadlines(null,false))if(record.id==id){editDeadline(record);return;}toast("مهلت در دسترس نیست");return;}
       if(n==5){for(OfficeDb.AppointmentRecord a:db.appointments(null))if(a.id==id){editAppointmentDetails(a);return;}toast("جلسه در دسترس نیست");return;}
       String state=n==0?"completed":n==1?"cancelled":n==4?"absent":"planned";
       new AlertDialog.Builder(this).setTitle("تأیید تغییر وضعیت").setMessage(options[n]+"؟").setNegativeButton("انصراف",null).setPositiveButton("تأیید",(x,w)->{db.setScheduleStatus(type,id,state);ReminderReceiver.schedule(this);dashboard();}).show();
     }).show();
+  }
+  void editDeadline(OfficeDb.DeadlineRecord record){
+    LinearLayout f=form();List<OfficeDb.ClientRecord> clients=db.caseClients(record.caseId);ArrayList<String> names=new ArrayList<>();names.add("موکل اصلی پرونده");for(OfficeDb.ClientRecord c:clients)names.add(c.name);
+    Spinner client=spinner(names.toArray(new String[0]));Long selected=db.deadlineClientId(record.id);for(int i=0;i<clients.size();i++)if(selected!=null&&clients.get(i).id==selected)client.setSelection(i+1);
+    EditText name=input("عنوان / نوع مهلت"),event=input("تاریخ شروع / ابلاغ"),due=input("تاریخ نهایی"),duration=input("مدت به روز طبق پرونده"),notes=area("توضیحات و مبنای شمارش");
+    name.setText(record.title);event.setText(record.eventDate);due.setText(record.dueDate);duration.setText(String.valueOf(record.days));notes.setText(record.notes);bindJalaliPicker(event);bindJalaliPicker(due);duration.setInputType(InputType.TYPE_CLASS_NUMBER);
+    TextView choose=action("انتخاب نوع مهلت از فهرست");choose.setOnClickListener(v->{String[] types=lines(prefs.getString("deadline_types",defaultDeadlineTypes()));new AlertDialog.Builder(this).setTitle("نوع مهلت").setItems(types,(d,n)->name.setText(types[n])).show();});
+    for(View view:new View[]{name,choose,client,event,due,duration,notes})f.addView(view);
+    f.addView(info("یادآوری‌ها","اگر تاریخ نهایی تغییر کند، یادآوری‌های قبلی غیرفعال و پیش‌فرض‌ها ساخته می‌شوند؛ یادآوری سفارشی را دوباره بررسی کنید. در غیر این صورت یادآوری‌ها حفظ می‌شوند."));
+    AlertDialog dialog=new AlertDialog.Builder(this).setTitle("ویرایش مهلت: "+record.caseTitle).setView(scroll(f)).setNegativeButton("انصراف",null).setPositiveButton("بررسی و ذخیره",null).create();
+    dialog.setOnShowListener(x->dialog.getButton(-1).setOnClickListener(v->new AlertDialog.Builder(this).setTitle("تأیید ویرایش مهلت").setMessage("اطلاعات مهلت با مقادیر واردشده جایگزین شود؟").setNegativeButton("بازگشت",null).setPositiveButton("ذخیره",(d,w)->{try{
+      db.editDeadline(record.id,record.caseId,client.getSelectedItemPosition()==0?null:clients.get(client.getSelectedItemPosition()-1).id,name.getText().toString(),event.getText().toString(),due.getText().toString(),Integer.parseInt(JalaliDate.asciiDigits(duration.getText().toString())),notes.getText().toString());
+      ReminderReceiver.schedule(this);dialog.dismiss();deadlineList(record.caseId);
+    }catch(Exception e){toast(e.getMessage()==null?"اطلاعات مهلت معتبر نیست":e.getMessage());}}).show()));dialog.show();
   }
   void editAppointmentDetails(OfficeDb.AppointmentRecord a){
     List<OfficeDb.ClientRecord> clients=db.clients();List<OfficeDb.CaseRecord> cases=db.cases(null,"همه",null);

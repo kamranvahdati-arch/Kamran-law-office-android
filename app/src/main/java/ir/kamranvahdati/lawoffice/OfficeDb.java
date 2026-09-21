@@ -701,6 +701,29 @@ final class OfficeDb extends SQLiteOpenHelper {
         try{long id=addDeadline(caseId,title,eventDate,dueDate,duration,notes);setDeadlineClient(id,caseId,clientId);database.setTransactionSuccessful();return id;}finally{database.endTransaction();}
     }
 
+    Long deadlineClientId(long id){
+        try(Cursor c=getReadableDatabase().rawQuery("SELECT client_id FROM deadlines WHERE id=? AND deleted_at IS NULL",new String[]{String.valueOf(id)})){
+            return c.moveToFirst()&&!c.isNull(0)?c.getLong(0):null;
+        }
+    }
+    void editDeadline(long id,long caseId,Long clientId,String title,String eventDate,String dueDate,int duration,String notes){
+        eventDate=JalaliDate.parse(eventDate).value();dueDate=JalaliDate.parse(dueDate).value();
+        if(blank(title)||JalaliDate.daysBetween(eventDate,dueDate)<0||duration<1||duration>3650)throw new IllegalArgumentException("عنوان، تاریخ یا مدت مهلت معتبر نیست");
+        SQLiteDatabase database=getWritableDatabase();database.beginTransaction();
+        try {
+            if(clientId!=null&&!isClientLinked(caseId,clientId))throw new IllegalArgumentException("موکل به این پرونده مرتبط نیست");
+            String previous;
+            try(Cursor c=database.rawQuery("SELECT d.due_date FROM deadlines d JOIN cases c ON c.id=d.case_id WHERE d.id=? AND d.case_id=? AND d.deleted_at IS NULL AND c.deleted_at IS NULL",new String[]{String.valueOf(id),String.valueOf(caseId)})){
+                if(!c.moveToFirst())throw new IllegalArgumentException("مهلت یا پرونده در دسترس نیست");previous=c.getString(0);
+            }
+            ContentValues v=new ContentValues();v.put("title",title.trim());v.put("event_date",eventDate);v.put("duration_days",duration);v.put("notes",notes);v.put("updated_at",now());v.put("is_demo",0);
+            if(clientId==null)v.putNull("client_id");else v.put("client_id",clientId);
+            database.update("deadlines",v,"id=?",new String[]{String.valueOf(id)});
+            if(!dueDate.equals(previous))changeScheduleDate("deadline",id,dueDate,"09:00","");
+            database.setTransactionSuccessful();
+        } finally {database.endTransaction();}
+    }
+
     void setDeadlineClient(long id,long caseId,Long clientId) {
         if(clientId!=null&&!isClientLinked(caseId,clientId))throw new IllegalArgumentException("موکل به این پرونده مرتبط نیست");
         ContentValues v=new ContentValues();if(clientId==null)v.putNull("client_id");else v.put("client_id",clientId);v.put("updated_at",now());

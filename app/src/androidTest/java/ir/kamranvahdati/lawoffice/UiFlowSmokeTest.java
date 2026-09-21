@@ -21,7 +21,8 @@ public class UiFlowSmokeTest {
         Instrumentation instrumentation=InstrumentationRegistry.getInstrumentation();
         Context context=instrumentation.getTargetContext();
         // Every theme is exercised with actual urgent/overdue fixture records, not an empty dashboard.
-        context.deleteDatabase(OfficeDb.ENCRYPTED_NAME);
+        // Keep the database file stable: earlier UI tests may have scheduled alarms.
+        // Deleting the file while a receiver has a connection produces SQLITE_READONLY_DBMOVED.
         OfficeDb fixtures=new OfficeDb(context);
         try {
             String today=JalaliDate.today().value();
@@ -76,11 +77,15 @@ public class UiFlowSmokeTest {
         try(FileOutputStream stream=new FileOutputStream(file)){assertTrue(bitmap[0].compress(Bitmap.CompressFormat.PNG,100,stream));}finally{bitmap[0].recycle();}
         // Gradle may uninstall the tested package at the end of instrumentation.
         // Copy synthetic-data screenshots before cleanup, using the test-only shell identity.
-        String command="mkdir -p /data/local/tmp/klo-qa && cp '"+file.getAbsolutePath()+"' /data/local/tmp/klo-qa/ && echo QA_SAVED";
+        runShell(instrumentation,"mkdir -p /data/local/tmp/klo-qa");
+        runShell(instrumentation,"cp "+file.getAbsolutePath()+" /data/local/tmp/klo-qa/"+file.getName());
+        assertTrue("Screenshot must survive package uninstall: "+name,
+            runShell(instrumentation,"ls /data/local/tmp/klo-qa/"+file.getName()).contains(file.getName()));
+    }
+    private String runShell(Instrumentation instrumentation,String command) throws Exception {
         try(java.io.BufferedReader reader=new java.io.BufferedReader(new java.io.InputStreamReader(
             new android.os.ParcelFileDescriptor.AutoCloseInputStream(instrumentation.getUiAutomation().executeShellCommand(command))))){
-            boolean saved=false;String line;while((line=reader.readLine())!=null)if(line.contains("QA_SAVED"))saved=true;
-            assertTrue("Screenshot must survive package uninstall: "+name,saved);
+            StringBuilder output=new StringBuilder();String line;while((line=reader.readLine())!=null)output.append(line).append('\n');return output.toString();
         }
     }
 }

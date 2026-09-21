@@ -10,6 +10,25 @@ import org.junit.runner.RunWith;
 
 @RunWith(AndroidJUnit4.class)
 public class ScheduleMigrationTest {
+    @Test public void deadlineEditIsAtomicAndResetsRemindersOnlyWhenDueDateChanges(){
+        Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();context.deleteDatabase(OfficeDb.ENCRYPTED_NAME);
+        OfficeDb db=new OfficeDb(context);
+        try {
+            String today=JalaliDate.today().value(),due=JalaliDate.addDays(today,10);
+            long id=db.saveDeadline(1,1L,"مهلت فرضی",today,due,10,"قبلی");
+            long custom=db.addCustomReminder("deadline",id,due,"08:15","مرور پرونده");
+            db.editDeadline(id,1,null,"عنوان اصلاح‌شده",today,due,10,"جدید");
+            assertNull(db.deadlineClientId(id));assertEquals(6,db.remindersFor("deadline",id).size());
+            boolean preserved=false;for(OfficeDb.ReminderRecord r:db.remindersFor("deadline",id))if(r.id==custom)preserved=true;assertTrue(preserved);
+            try{db.editDeadline(id,1,1L,"نباید ذخیره شود",JalaliDate.addDays(due,1),due,10,"");fail("invalid date accepted");}catch(IllegalArgumentException expected){}
+            for(OfficeDb.DeadlineRecord r:db.deadlines(null,false))if(r.id==id){assertEquals("عنوان اصلاح‌شده",r.title);assertEquals(today,r.eventDate);}
+            assertNull(db.deadlineClientId(id));assertEquals(6,db.remindersFor("deadline",id).size());
+            String newDue=JalaliDate.addDays(due,2);db.editDeadline(id,1,1L,"مهلت جدید",today,newDue,12,"");
+            assertEquals(Long.valueOf(1),db.deadlineClientId(id));assertEquals(5,db.remindersFor("deadline",id).size());
+            for(OfficeDb.ReminderRecord r:db.remindersFor("deadline",id))assertNotEquals(custom,r.id);
+            for(OfficeDb.DeadlineRecord r:db.deadlines(null,false))if(r.id==id){assertEquals(newDue,r.dueDate);assertEquals(12,r.days);}
+        } finally {db.close();}
+    }
     @Test public void editingSessionDetailsPreservesTimeAndRemindersAndRejectsUnrelatedClient() {
         Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();context.deleteDatabase(OfficeDb.ENCRYPTED_NAME);
         OfficeDb db=new OfficeDb(context);

@@ -34,6 +34,7 @@ public class UiContractTest {
         int flags=activity.getWindow().getDecorView().getSystemUiVisibility();assertEquals(0,flags&View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);assertEquals(0,flags&View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
         InstrumentationRegistry.getInstrumentation().runOnMainSync(()->{EditText date=activity.input("تاریخ"),time=activity.input("ساعت");activity.bindJalaliPicker(date);activity.bindTimePicker(time);assertNotNull(date.getCompoundDrawables()[2]);assertNotNull(time.getCompoundDrawables()[2]);});
         ActivityInfo info=context.getPackageManager().getActivityInfo(activity.getComponentName(),PackageManager.GET_META_DATA);assertEquals(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED,info.screenOrientation);
-        activity.finish();
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(activity::finish);
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync();
     }
 }
