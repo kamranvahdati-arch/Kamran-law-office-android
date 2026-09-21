@@ -2,6 +2,7 @@ package ir.kamranvahdati.lawoffice;
 
 import java.util.Calendar;
 import java.util.Locale;
+import java.util.TimeZone;
 
 final class JalaliDate {
     final int year;
@@ -35,10 +36,10 @@ final class JalaliDate {
         if (month <= 11) return 30;
         int[] g1 = toGregorian(year, 12, 1);
         int[] g2 = toGregorian(year + 1, 1, 1);
-        Calendar a = Calendar.getInstance();
+        Calendar a = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
         a.clear();
         a.set(g1[0], g1[1] - 1, g1[2]);
-        Calendar b = Calendar.getInstance();
+        Calendar b = Calendar.getInstance(TimeZone.getTimeZone("UTC"));
         b.clear();
         b.set(g2[0], g2[1] - 1, g2[2]);
         return (int) ((b.getTimeInMillis() - a.getTimeInMillis()) / 86400000L);
@@ -116,7 +117,11 @@ final class JalaliDate {
 
     static Calendar calendar(String date){JalaliDate j=parse(date);int[] g=toGregorian(j.year,j.month,j.day);Calendar c=Calendar.getInstance();c.clear();c.set(g[0],g[1]-1,g[2],12,0,0);return c;}
 
-    static String addDays(String date,int days){Calendar c=calendar(date);c.add(Calendar.DAY_OF_MONTH,days);return fromGregorian(c.get(Calendar.YEAR),c.get(Calendar.MONTH)+1,c.get(Calendar.DAY_OF_MONTH)).value();}
+    // Date-only arithmetic must never depend on device timezone or daylight saving.
+    // Keep calendar() separate: existing alarm instants are not rewritten here.
+    private static Calendar civilCalendar(String date){JalaliDate j=parse(date);int[] g=toGregorian(j.year,j.month,j.day);Calendar c=Calendar.getInstance(TimeZone.getTimeZone("UTC"));c.clear();c.set(g[0],g[1]-1,g[2],0,0,0);return c;}
 
-    static int daysBetween(String start,String end){Calendar a=calendar(start),b=calendar(end);long delta=b.getTimeInMillis()-a.getTimeInMillis();return (int)Math.round(delta/86400000.0);}
+    static String addDays(String date,int days){Calendar c=civilCalendar(date);c.add(Calendar.DAY_OF_MONTH,days);return fromGregorian(c.get(Calendar.YEAR),c.get(Calendar.MONTH)+1,c.get(Calendar.DAY_OF_MONTH)).value();}
+
+    static int daysBetween(String start,String end){long delta=civilCalendar(end).getTimeInMillis()-civilCalendar(start).getTimeInMillis();return (int)(delta/86400000L);}
 }

@@ -8,6 +8,10 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [30, 35]
     permissions:
       contents: write
     steps:
@@ -25,15 +29,16 @@ jobs:
       - name: Test Jalali deadline math
         run: |
           mkdir -p /tmp/klo-date-test
-          javac -d /tmp/klo-date-test app/src/main/java/ir/kamranvahdati/lawoffice/JalaliDate.java app/src/test/java/ir/kamranvahdati/lawoffice/DeadlineDateSmokeTest.java
+          javac -d /tmp/klo-date-test app/src/main/java/ir/kamranvahdati/lawoffice/JalaliDate.java app/src/main/java/ir/kamranvahdati/lawoffice/InputValidators.java app/src/test/java/ir/kamranvahdati/lawoffice/DeadlineDateSmokeTest.java app/src/test/java/ir/kamranvahdati/lawoffice/InputValidatorsSmokeTest.java
           java -cp /tmp/klo-date-test ir.kamranvahdati.lawoffice.DeadlineDateSmokeTest
+          java -cp /tmp/klo-date-test ir.kamranvahdati.lawoffice.InputValidatorsSmokeTest
       - name: Build release APK
-        run: gradle assembleRelease
+        run: gradle assembleRelease assemblePreview
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Kamran-Law-Office-APK
-          path: app/build/outputs/apk/release/app-release.apk
+          name: Kamran-Law-Office-APK-api-${{ matrix.api }}
+          path: app/build/outputs/apk/preview/app-preview.apk
           if-no-files-found: error
           retention-days: 30
       - name: Enable hardware acceleration for Android emulator
@@ -46,7 +51,7 @@ jobs:
         if: github.event_name == 'pull_request'
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 30
+          api-level: ${{ matrix.api }}
           arch: x86_64
           target: google_apis
           disable-animations: false
@@ -55,12 +60,32 @@ jobs:
             adb wait-for-device
             adb shell getprop sys.boot_completed
             gradle connectedDebugAndroidTest --stacktrace
+            cp -R app/build/reports/androidTests app/build/full-test-report
+            adb shell wm size 720x1280
+            gradle installDebug installDebugAndroidTest
+            python3 scripts/run-ui-smoke.py
+            adb shell wm size reset
+            adb install -r app/build/outputs/apk/preview/app-preview.apk
+            adb shell am start -W -n ir.kamranvahdati.lawoffice.preview/ir.kamranvahdati.lawoffice.MainActivity
+            adb shell pidof ir.kamranvahdati.lawoffice.preview
+      - name: Preserve test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Android-test-evidence-api-${{ matrix.api }}
+          path: |
+            app/build/reports/androidTests
+            app/build/outputs/androidTest-results
+            app/build/qa
+            app/build/full-test-report
+            app/build/ui-smoke.txt
+          if-no-files-found: ignore
       - name: Publish APK plus ZIP
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && matrix.api == 30
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp app/build/outputs/apk/release/app-release.apk Kamran-Law-Office-v0.8.1.apk
-          zip -j Kamran-Law-Office-v0.8.1.zip Kamran-Law-Office-v0.8.1.apk
-          gh release view latest-preview >/dev/null 2>&1 || gh release create latest-preview --title "نسخه آزمایشی دفتر وکالت" --notes "نسخه عمومی آزمایشی؛ فقط داده فرضی. برای محدودیت‌های امنیتی و مهاجرت، AUDIT_V08.md را بخوانید."
-          gh release upload latest-preview Kamran-Law-Office-v0.8.1.apk Kamran-Law-Office-v0.8.1.zip --clobber
+          cp app/build/outputs/apk/release/app-release.apk Kamran-Law-Office-v0.9.1-test.apk
+          zip -j Kamran-Law-Office-v0.9.1-test.zip Kamran-Law-Office-v0.9.1-test.apk
+          gh release view latest-preview >/dev/null 2>&1 || gh release create latest-preview --title "نسخه آزمایشی دفتر وکالت" --notes "نسخه عمومی آزمایشی با امضای توسعه؛ داده‌های دمو قابل حذف‌اند. این فایل release تولیدی و امضاشده تجاری نیست."
+          gh release upload latest-preview Kamran-Law-Office-v0.9.1-test.apk Kamran-Law-Office-v0.9.1-test.zip --clobber

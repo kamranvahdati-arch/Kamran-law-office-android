@@ -23,7 +23,7 @@ final class OfficeDb extends SQLiteOpenHelper {
     static final String LEGACY_NAME = "law_office_demo_v7.db";
     static final String ENCRYPTED_NAME = "law_office_encrypted_v9.db";
     static final String DATABASE_NAME = ENCRYPTED_NAME;
-    private static final int VERSION = 9;
+    private static final int VERSION = 13;
 
     OfficeDb(Context context) {
         super(context, DATABASE_NAME, DatabaseKey.read(context), null, VERSION, 0, null, null, false);
@@ -61,6 +61,10 @@ final class OfficeDb extends SQLiteOpenHelper {
                 "FOREIGN KEY(client_id) REFERENCES clients(id) ON DELETE SET NULL)");
         createScheduleTables(db);
         migrateV9(db);
+        migrateV10(db);
+        migrateV11(db);
+        migrateV12(db);
+        migrateV13(db);
         seed(db);
     }
 
@@ -93,6 +97,27 @@ final class OfficeDb extends SQLiteOpenHelper {
         }
         if (oldVersion < 8) createScheduleTables(db);
         if (oldVersion < 9) migrateV9(db);
+        if (oldVersion < 10) migrateV10(db);
+        if (oldVersion < 11) migrateV11(db);
+        if (oldVersion < 12) migrateV12(db);
+        if (oldVersion < 13) migrateV13(db);
+    }
+
+    private void migrateV13(SQLiteDatabase db) {
+        addColumn(db,"payment_checks","collection_ledger_id INTEGER REFERENCES ledger(id)");
+        db.execSQL("UPDATE payment_checks SET collection_ledger_id=(SELECT ip.ledger_id FROM installment_payments ip WHERE ip.check_id=payment_checks.id AND ip.deleted_at IS NULL ORDER BY ip.id DESC LIMIT 1) WHERE collection_ledger_id IS NULL");
+    }
+
+    /** Additive only: preserve existing dates, reminder epochs, IDs and completion flags. */
+    private void migrateV12(SQLiteDatabase db) {
+        addColumn(db,"appointments","branch TEXT");
+        addColumn(db,"appointments","authority TEXT");
+        addColumn(db,"appointments","city TEXT");
+        addColumn(db,"appointments","attendance_status TEXT NOT NULL DEFAULT 'planned'");
+        addColumn(db,"appointments","completed_at TEXT");
+        addColumn(db,"deadlines","client_id INTEGER REFERENCES clients(id)");
+        addColumn(db,"deadlines","completed_at TEXT");
+        addColumn(db,"reminders","label TEXT NOT NULL DEFAULT ''");
     }
 
     private void migrateV9(SQLiteDatabase db) {
@@ -124,6 +149,98 @@ final class OfficeDb extends SQLiteOpenHelper {
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_tasks_case_date ON tasks(case_id,due_date)");
         db.execSQL("CREATE TABLE IF NOT EXISTS reminders(id INTEGER PRIMARY KEY AUTOINCREMENT,uid TEXT UNIQUE NOT NULL,target_type TEXT NOT NULL,target_id INTEGER NOT NULL,advance_days INTEGER NOT NULL,trigger_at INTEGER NOT NULL,fired_at TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,deleted_at TEXT)");
         db.execSQL("CREATE INDEX IF NOT EXISTS idx_reminders_trigger ON reminders(trigger_at,fired_at)");
+    }
+
+    /** Additive v10 migration. The v9 database file name and all existing columns stay intact. */
+    private void migrateV10(SQLiteDatabase db) {
+        for (String table : new String[]{"clients","cases","tasks","ledger","worklogs","appointments","deadlines","installments","installment_payments"})
+            addColumn(db, table, "is_demo INTEGER NOT NULL DEFAULT 0");
+        addColumn(db,"tasks","category TEXT");
+        addColumn(db,"tasks","is_personal INTEGER NOT NULL DEFAULT 0");
+        addColumn(db,"installment_payments","payment_method TEXT NOT NULL DEFAULT 'transfer'");
+        addColumn(db,"installment_payments","check_id INTEGER REFERENCES payment_checks(id) ON DELETE SET NULL");
+
+        db.execSQL("CREATE TABLE IF NOT EXISTS case_clients(id INTEGER PRIMARY KEY AUTOINCREMENT,uid TEXT UNIQUE NOT NULL,"+
+                "case_id INTEGER NOT NULL REFERENCES cases(id),client_id INTEGER NOT NULL REFERENCES clients(id),"+
+                "role TEXT NOT NULL DEFAULT 'موکل',is_primary INTEGER NOT NULL DEFAULT 0,"+
+                "created_at TEXT NOT NULL,updated_at TEXT NOT NULL,deleted_at TEXT,is_demo INTEGER NOT NULL DEFAULT 0)");
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS idx_case_clients_live ON case_clients(case_id,client_id) WHERE deleted_at IS NULL");
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_case_clients_client ON case_clients(client_id,deleted_at)");
+
+        db.execSQL("CREATE TABLE IF NOT EXISTS collaborators(id INTEGER PRIMARY KEY AUTOINCREMENT,uid TEXT UNIQUE NOT NULL,"+
+                "first_name TEXT NOT NULL,last_name TEXT NOT NULL,license_number TEXT,professional_body TEXT,phone TEXT,notes TEXT,"+
+                "created_at TEXT NOT NULL,updated_at TEXT NOT NULL,deleted_at TEXT,is_demo INTEGER NOT NULL DEFAULT 0)");
+        db.execSQL("CREATE TABLE IF NOT EXISTS case_collaborators(id INTEGER PRIMARY KEY AUTOINCREMENT,uid TEXT UNIQUE NOT NULL,"+
+                "case_id INTEGER NOT NULL REFERENCES cases(id),collaborator_id INTEGER NOT NULL REFERENCES collaborators(id),"+
+                "collaboration_mode TEXT NOT NULL,fee_share_percent REAL,financial_notes TEXT,"+
+                "created_at TEXT NOT NULL,updated_at TEXT NOT NULL,deleted_at TEXT,is_demo INTEGER NOT NULL DEFAULT 0)");
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS idx_case_collaborator_live ON case_collaborators(case_id,collaborator_id) WHERE deleted_at IS NULL");
+
+        db.execSQL("CREATE TABLE IF NOT EXISTS representation_contracts(id INTEGER PRIMARY KEY AUTOINCREMENT,uid TEXT UNIQUE NOT NULL,"+
+                "case_id INTEGER REFERENCES cases(id),contract_number TEXT NOT NULL,contract_date TEXT NOT NULL,subject TEXT,"+
+                "authority_scope TEXT,fee_amount INTEGER,opponents_any INTEGER NOT NULL DEFAULT 0,opponents_text TEXT,"+
+                "delegation_allowed INTEGER NOT NULL DEFAULT 0,collaboration_mode TEXT,notes TEXT,"+
+                "created_at TEXT NOT NULL,updated_at TEXT NOT NULL,deleted_at TEXT,is_demo INTEGER NOT NULL DEFAULT 0)");
+        db.execSQL("CREATE TABLE IF NOT EXISTS contract_clients(id INTEGER PRIMARY KEY AUTOINCREMENT,uid TEXT UNIQUE NOT NULL,"+
+                "contract_id INTEGER NOT NULL REFERENCES representation_contracts(id),client_id INTEGER NOT NULL REFERENCES clients(id),"+
+                "created_at TEXT NOT NULL,updated_at TEXT NOT NULL,deleted_at TEXT,is_demo INTEGER NOT NULL DEFAULT 0)");
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS idx_contract_clients_live ON contract_clients(contract_id,client_id) WHERE deleted_at IS NULL");
+        db.execSQL("CREATE TABLE IF NOT EXISTS contract_collaborators(id INTEGER PRIMARY KEY AUTOINCREMENT,uid TEXT UNIQUE NOT NULL,"+
+                "contract_id INTEGER NOT NULL REFERENCES representation_contracts(id),collaborator_id INTEGER NOT NULL REFERENCES collaborators(id),"+
+                "collaboration_mode TEXT,fee_share_percent REAL,notes TEXT,"+
+                "created_at TEXT NOT NULL,updated_at TEXT NOT NULL,deleted_at TEXT,is_demo INTEGER NOT NULL DEFAULT 0)");
+
+        db.execSQL("CREATE TABLE IF NOT EXISTS financial_contracts(id INTEGER PRIMARY KEY AUTOINCREMENT,uid TEXT UNIQUE NOT NULL,"+
+                "case_id INTEGER NOT NULL REFERENCES cases(id),contract_date TEXT NOT NULL,total_amount INTEGER NOT NULL CHECK(total_amount>=0),"+
+                "payment_terms TEXT,notes TEXT,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,deleted_at TEXT,is_demo INTEGER NOT NULL DEFAULT 0)");
+        db.execSQL("CREATE TABLE IF NOT EXISTS payment_checks(id INTEGER PRIMARY KEY AUTOINCREMENT,uid TEXT UNIQUE NOT NULL,"+
+                "case_id INTEGER NOT NULL REFERENCES cases(id),installment_id INTEGER REFERENCES installments(id),check_number TEXT NOT NULL,"+
+                "due_date TEXT NOT NULL,amount INTEGER NOT NULL CHECK(amount>0),bank TEXT,branch TEXT,"+
+                "collection_status TEXT NOT NULL DEFAULT 'pending',notes TEXT,"+
+                "created_at TEXT NOT NULL,updated_at TEXT NOT NULL,deleted_at TEXT,is_demo INTEGER NOT NULL DEFAULT 0)");
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_checks_due ON payment_checks(collection_status,due_date)");
+
+        db.execSQL("CREATE TABLE IF NOT EXISTS legal_taxonomy(id INTEGER PRIMARY KEY AUTOINCREMENT,uid TEXT UNIQUE NOT NULL,"+
+                "remote_id TEXT UNIQUE,title TEXT NOT NULL,parent_remote_id TEXT,content_version TEXT,"+
+                "created_at TEXT NOT NULL,updated_at TEXT NOT NULL,deleted_at TEXT)");
+        db.execSQL("CREATE TABLE IF NOT EXISTS legal_documents(id INTEGER PRIMARY KEY AUTOINCREMENT,uid TEXT UNIQUE NOT NULL,"+
+                "remote_id TEXT UNIQUE,kind TEXT NOT NULL,title TEXT NOT NULL,number TEXT,subject TEXT,taxonomy_remote_id TEXT,"+
+                "body TEXT NOT NULL,source_url TEXT,content_version TEXT,downloaded_at TEXT,"+
+                "created_at TEXT NOT NULL,updated_at TEXT NOT NULL,deleted_at TEXT)");
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_legal_document_lookup ON legal_documents(kind,number,taxonomy_remote_id)");
+        db.execSQL("CREATE TABLE IF NOT EXISTS legal_sync_state(id INTEGER PRIMARY KEY CHECK(id=1),manifest_version TEXT,taxonomy_version TEXT,last_checked_at TEXT,last_success_at TEXT)");
+
+        backfillCaseClients(db);
+        tagRecognizableDemoRows(db);
+    }
+
+    /** Additive v11 migration for v0.9.1. Existing rows and the encrypted file are preserved. */
+    private void migrateV11(SQLiteDatabase db) {
+        addColumn(db,"cases","judgment_number TEXT");
+        addColumn(db,"cases","order_number TEXT");
+        db.execSQL("CREATE TABLE IF NOT EXISTS case_attachments(id INTEGER PRIMARY KEY AUTOINCREMENT,"+
+                "uid TEXT UNIQUE NOT NULL,case_id INTEGER NOT NULL REFERENCES cases(id),"+
+                "display_name TEXT NOT NULL,mime_type TEXT NOT NULL,content_uri TEXT NOT NULL,"+
+                "created_at TEXT NOT NULL,updated_at TEXT NOT NULL,deleted_at TEXT,is_demo INTEGER NOT NULL DEFAULT 0)");
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_case_attachments_case ON case_attachments(case_id,deleted_at)");
+    }
+
+    private void backfillCaseClients(SQLiteDatabase db) {
+        try (Cursor rows=db.rawQuery("SELECT c.id,c.client_id,c.created_at,c.updated_at,COALESCE(c.is_demo,0) FROM cases c WHERE c.client_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM case_clients cc WHERE cc.case_id=c.id AND cc.client_id=c.client_id AND cc.deleted_at IS NULL)",null)) {
+            while(rows.moveToNext()) {
+                ContentValues v=new ContentValues();identity(v);v.put("case_id",rows.getLong(0));v.put("client_id",rows.getLong(1));
+                v.put("role","موکل اصلی");v.put("is_primary",1);v.put("is_demo",rows.getInt(4));db.insertOrThrow("case_clients",null,v);
+            }
+        }
+    }
+
+    private void tagRecognizableDemoRows(SQLiteDatabase db) {
+        db.execSQL("UPDATE clients SET is_demo=1 WHERE is_demo=0 AND name LIKE '%آزمایشی%' AND notes LIKE '%شخص واقعی نیست%'");
+        db.execSQL("UPDATE cases SET is_demo=1 WHERE is_demo=0 AND title LIKE '%آزمایشی%' AND contract_notes LIKE '%فاقد هرگونه اثر واقعی%'");
+        db.execSQL("UPDATE tasks SET is_demo=1 WHERE is_demo=0 AND notes LIKE '%آزمایش برنامه%'");
+        db.execSQL("UPDATE ledger SET is_demo=1 WHERE is_demo=0 AND description LIKE '%کاملاً فرضی%'");
+        db.execSQL("UPDATE worklogs SET is_demo=1 WHERE is_demo=0 AND description LIKE '%کاملاً فرضی%'");
+        db.execSQL("UPDATE case_clients SET is_demo=1 WHERE case_id IN(SELECT id FROM cases WHERE is_demo=1) AND client_id IN(SELECT id FROM clients WHERE is_demo=1)");
     }
 
     private static void identity(ContentValues v) { String t=now();v.put("uid",UUID.randomUUID().toString());v.put("created_at",t);v.put("updated_at",t); }
@@ -166,6 +283,7 @@ final class OfficeDb extends SQLiteOpenHelper {
             v.put("phone",String.format(Locale.US,"0912%07d",i+1));
             v.put("address","نشانی کاملاً فرضی، شهر نمونه، خیابان آزمایش، پلاک "+fa(i+1));
             v.put("notes","این رکورد صرفاً برای آزمون نرم‌افزار است و شخص واقعی نیست.");
+            v.put("is_demo",1);
             identity(v);
             clientIds[i]=db.insertOrThrow("clients",null,v);
         }
@@ -191,8 +309,11 @@ final class OfficeDb extends SQLiteOpenHelper {
             v.put("evidence","سند فرضی، گواهی نمونه و مکاتبات آزمایشی");
             v.put("summary","شرح مختصر کاملاً ساختگی برای سنجش نمایش اطلاعات پرونده.");
             v.put("financial_notes","یادداشت مالی آزمایشی شماره "+fa(i+1));
+            v.put("is_demo",1);
             identity(v);
             caseIds[i]=db.insertOrThrow("cases",null,v);
+            ContentValues link=new ContentValues();identity(link);link.put("case_id",caseIds[i]);link.put("client_id",clientIds[i]);
+            link.put("role","موکل اصلی");link.put("is_primary",1);link.put("is_demo",1);db.insertOrThrow("case_clients",null,link);
         }
 
         for (int i=0;i<100;i++) {
@@ -204,6 +325,7 @@ final class OfficeDb extends SQLiteOpenHelper {
             v.put("priority",i%4==0?"فوری":i%4==1?"عادی":"کم");
             v.put("done",i%10==0?1:0); v.put("status",i%10==0?"done":i%10==1?"deferred":"open");
             v.put("notes","توضیح فرضی برای آزمایش برنامه، یادآوری و تقویم.");
+            v.put("is_demo",1);
             identity(v); db.insertOrThrow("tasks",null,v);
         }
 
@@ -215,6 +337,7 @@ final class OfficeDb extends SQLiteOpenHelper {
             v.put("entry_date",String.format(Locale.US,"%04d/%02d/%02d",today.year,today.month,(i%28)+1));
             v.put("paid_by",payment?"موکل":i%4==1?"وکیل":"موکل");
             v.put("description","عملیات مالی کاملاً فرضی شماره "+fa(i+1));
+            v.put("is_demo",1);
             identity(v); db.insertOrThrow("ledger",null,v);
         }
         for (int i=0;i<100;i++) {
@@ -223,6 +346,7 @@ final class OfficeDb extends SQLiteOpenHelper {
             v.put("action_type",i%4==0?"مطالعه پرونده":i%4==1?"مراجعه به شعبه":i%4==2?"پیگیری پرونده":"ارسال لایحه");
             v.put("action_date",String.format(Locale.US,"%04d/%02d/%02d",today.year,today.month,(i%28)+1));
             v.put("description","گزارش اقدام کاملاً فرضی شماره "+fa(i+1)); identity(v);
+            v.put("is_demo",1);
             db.insertOrThrow("worklogs",null,v);
         }
         verifyDemoData(db);
@@ -254,16 +378,16 @@ final class OfficeDb extends SQLiteOpenHelper {
         return getWritableDatabase().insertOrThrow("clients", null, v);
     }
 
-    void updateClient(long id,String name,String nationalId,String father,String birth,String phone,String address,String notes){ContentValues v=new ContentValues();v.put("name",name);v.put("national_id",nationalId);v.put("father_name",father);v.put("birth_date",birth);v.put("phone",phone);v.put("address",address);v.put("notes",notes);v.put("updated_at",now());if(getWritableDatabase().update("clients",v,"id=? AND deleted_at IS NULL",new String[]{String.valueOf(id)})!=1)throw new IllegalArgumentException("موکل یافت نشد");}
-    void deleteClient(long id){if(scalar("SELECT COUNT(*) FROM cases WHERE client_id=? AND deleted_at IS NULL",String.valueOf(id))>0)throw new IllegalArgumentException("ابتدا پرونده‌های مرتبط را به موکل دیگری منتقل کنید");softDelete("clients",id);}
+    void updateClient(long id,String name,String nationalId,String father,String birth,String phone,String address,String notes){ContentValues v=new ContentValues();v.put("is_demo",0);v.put("name",name);v.put("national_id",nationalId);v.put("father_name",father);v.put("birth_date",birth);v.put("phone",phone);v.put("address",address);v.put("notes",notes);v.put("updated_at",now());if(getWritableDatabase().update("clients",v,"id=? AND deleted_at IS NULL",new String[]{String.valueOf(id)})!=1)throw new IllegalArgumentException("موکل یافت نشد");}
+    void deleteClient(long id){if(scalar("SELECT COUNT(*) FROM case_clients cc JOIN cases c ON c.id=cc.case_id WHERE cc.client_id=? AND cc.deleted_at IS NULL AND c.deleted_at IS NULL",String.valueOf(id))>0)throw new IllegalArgumentException("ابتدا ارتباط این موکل با پرونده‌ها را مدیریت کنید");softDelete("clients",id);}
 
     long addCase(CaseRecord c) {
         ContentValues v = caseValues(c);
         identity(v);
-        return getWritableDatabase().insertOrThrow("cases", null, v);
+        SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{long id=db.insertOrThrow("cases", null, v);if(c.clientId>0)addCaseClient(db,id,c.clientId,"موکل اصلی",true,false);db.setTransactionSuccessful();return id;}finally{db.endTransaction();}
     }
-    void updateCase(CaseRecord c){ContentValues v=caseValues(c);v.put("updated_at",now());if(getWritableDatabase().update("cases",v,"id=? AND deleted_at IS NULL",new String[]{String.valueOf(c.id)})!=1)throw new IllegalArgumentException("پرونده یافت نشد");}
-    void deleteCase(long id){SQLiteDatabase db=getWritableDatabase();String[] args={String.valueOf(id)};db.beginTransaction();try{String t=now();ContentValues tomb=new ContentValues();tomb.put("deleted_at",t);tomb.put("updated_at",t);db.update("reminders",tomb,"(target_type='deadline' AND target_id IN(SELECT id FROM deadlines WHERE case_id=?)) OR (target_type='task' AND target_id IN(SELECT id FROM tasks WHERE case_id=?)) OR (target_type='appointment' AND target_id IN(SELECT id FROM appointments WHERE case_id=?))",new String[]{args[0],args[0],args[0]});db.update("installment_payments",tomb,"installment_id IN(SELECT id FROM installments WHERE case_id=?)",args);for(String child:new String[]{"tasks","ledger","worklogs","appointments","deadlines","installments"})db.update(child,tomb,"case_id=? AND deleted_at IS NULL",args);db.update("cases",tomb,"id=? AND deleted_at IS NULL",args);db.setTransactionSuccessful();}finally{db.endTransaction();}}
+    void updateCase(CaseRecord c){SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{ContentValues v=caseValues(c);v.put("is_demo",0);v.put("updated_at",now());if(db.update("cases",v,"id=? AND deleted_at IS NULL",new String[]{String.valueOf(c.id)})!=1)throw new IllegalArgumentException("پرونده یافت نشد");if(c.clientId>0){ContentValues primaryOff=new ContentValues();primaryOff.put("is_primary",0);primaryOff.put("updated_at",now());db.update("case_clients",primaryOff,"case_id=? AND deleted_at IS NULL",new String[]{String.valueOf(c.id)});addCaseClient(db,c.id,c.clientId,"موکل اصلی",true,false);}db.setTransactionSuccessful();}finally{db.endTransaction();}}
+    void deleteCase(long id){SQLiteDatabase db=getWritableDatabase();String[] args={String.valueOf(id)};db.beginTransaction();try{String t=now();ContentValues tomb=new ContentValues();tomb.put("deleted_at",t);tomb.put("updated_at",t);db.update("reminders",tomb,"(target_type='deadline' AND target_id IN(SELECT id FROM deadlines WHERE case_id=?)) OR (target_type='task' AND target_id IN(SELECT id FROM tasks WHERE case_id=?)) OR (target_type='appointment' AND target_id IN(SELECT id FROM appointments WHERE case_id=?))",new String[]{args[0],args[0],args[0]});db.update("installment_payments",tomb,"installment_id IN(SELECT id FROM installments WHERE case_id=?)",args);db.update("contract_clients",tomb,"contract_id IN(SELECT id FROM representation_contracts WHERE case_id=?)",args);db.update("contract_collaborators",tomb,"contract_id IN(SELECT id FROM representation_contracts WHERE case_id=?)",args);for(String child:new String[]{"tasks","ledger","worklogs","appointments","deadlines","installments","case_clients","case_collaborators","representation_contracts","financial_contracts","payment_checks","case_attachments"})db.update(child,tomb,"case_id=? AND deleted_at IS NULL",args);db.update("cases",tomb,"id=? AND deleted_at IS NULL",args);db.setTransactionSuccessful();}finally{db.endTransaction();}}
     private void softDelete(String table,long id){ContentValues v=new ContentValues();v.put("deleted_at",now());v.put("updated_at",now());getWritableDatabase().update(table,v,"id=? AND deleted_at IS NULL",new String[]{String.valueOf(id)});}
 
     void updateCaseStatus(long id, String status) {
@@ -271,13 +395,112 @@ final class OfficeDb extends SQLiteOpenHelper {
         getWritableDatabase().update("cases", v, "id=? AND deleted_at IS NULL", new String[]{String.valueOf(id)});
     }
 
+    void addClientToCase(long caseId,long clientId,String role,boolean primary){SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{try(Cursor count=db.rawQuery("SELECT COUNT(*) FROM case_clients WHERE case_id=? AND deleted_at IS NULL",new String[]{String.valueOf(caseId)})){if(count.moveToFirst()&&count.getInt(0)==0)primary=true;}if(primary){ContentValues off=new ContentValues();off.put("is_primary",0);off.put("updated_at",now());db.update("case_clients",off,"case_id=? AND deleted_at IS NULL",new String[]{String.valueOf(caseId)});}addCaseClient(db,caseId,clientId,role,primary,false);if(primary){ContentValues cv=new ContentValues();cv.put("client_id",clientId);cv.put("updated_at",now());db.update("cases",cv,"id=?",new String[]{String.valueOf(caseId)});}db.setTransactionSuccessful();}finally{db.endTransaction();}}
+    void unlinkClientFromCase(long caseId,long clientId){SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{String now=now();ContentValues tomb=new ContentValues();tomb.put("deleted_at",now);tomb.put("updated_at",now);if(db.update("case_clients",tomb,"case_id=? AND client_id=? AND deleted_at IS NULL",new String[]{String.valueOf(caseId),String.valueOf(clientId)})!=1)throw new IllegalArgumentException("ارتباط موکل یافت نشد");Long replacement=null;try(Cursor c=db.rawQuery("SELECT client_id FROM case_clients WHERE case_id=? AND deleted_at IS NULL ORDER BY is_primary DESC,id LIMIT 1",new String[]{String.valueOf(caseId)})){if(c.moveToFirst())replacement=c.getLong(0);}ContentValues cv=new ContentValues();if(replacement==null)cv.putNull("client_id");else cv.put("client_id",replacement);cv.put("updated_at",now);db.update("cases",cv,"id=?",new String[]{String.valueOf(caseId)});if(replacement!=null){ContentValues primary=new ContentValues();primary.put("is_primary",1);primary.put("updated_at",now);db.update("case_clients",primary,"case_id=? AND client_id=? AND deleted_at IS NULL",new String[]{String.valueOf(caseId),String.valueOf(replacement)});}db.setTransactionSuccessful();}finally{db.endTransaction();}}
+    private void addCaseClient(SQLiteDatabase db,long caseId,long clientId,String role,boolean primary,boolean demo){
+        try(Cursor exists=db.rawQuery("SELECT id FROM case_clients WHERE case_id=? AND client_id=? AND deleted_at IS NULL",new String[]{String.valueOf(caseId),String.valueOf(clientId)})){
+            if(exists.moveToFirst()){ContentValues update=new ContentValues();update.put("role",role);update.put("is_primary",primary?1:0);update.put("updated_at",now());db.update("case_clients",update,"id=?",new String[]{String.valueOf(exists.getLong(0))});return;}
+        }
+        ContentValues v=new ContentValues();identity(v);v.put("case_id",caseId);v.put("client_id",clientId);v.put("role",role);v.put("is_primary",primary?1:0);v.put("is_demo",demo?1:0);db.insertOrThrow("case_clients",null,v);
+    }
+    List<ClientRecord> caseClients(long caseId){ArrayList<ClientRecord> out=new ArrayList<>();try(Cursor c=getReadableDatabase().rawQuery("SELECT cl.id,cl.name,cl.national_id,cl.father_name,cl.birth_date,cl.phone,cl.address,cl.notes,0,0 FROM case_clients cc JOIN clients cl ON cl.id=cc.client_id WHERE cc.case_id=? AND cc.deleted_at IS NULL AND cl.deleted_at IS NULL ORDER BY cc.is_primary DESC,cl.name",new String[]{String.valueOf(caseId)})){while(c.moveToNext())out.add(new ClientRecord(c.getLong(0),c.getString(1),c.getString(2),c.getString(3),c.getString(4),c.getString(5),c.getString(6),c.getString(7),0,0));}return out;}
+    boolean isClientLinked(long caseId,long clientId){return scalarArgs("SELECT COUNT(*) FROM case_clients WHERE case_id=? AND client_id=? AND deleted_at IS NULL",new String[]{String.valueOf(caseId),String.valueOf(clientId)})>0;}
+
+    long addCollaborator(String first,String last,String license,String body,String phone,String notes){ContentValues v=new ContentValues();identity(v);v.put("first_name",first);v.put("last_name",last);v.put("license_number",license);v.put("professional_body",body);v.put("phone",phone);v.put("notes",notes);return getWritableDatabase().insertOrThrow("collaborators",null,v);}
+    List<CollaboratorRecord> collaborators(){ArrayList<CollaboratorRecord> out=new ArrayList<>();try(Cursor c=getReadableDatabase().rawQuery("SELECT id,first_name,last_name,license_number,professional_body,phone,notes FROM collaborators WHERE deleted_at IS NULL ORDER BY last_name,first_name",null)){while(c.moveToNext())out.add(new CollaboratorRecord(c.getLong(0),c.getString(1),c.getString(2),c.getString(3),c.getString(4),c.getString(5),c.getString(6)));}return out;}
+    void linkCollaborator(long caseId,long collaboratorId,String mode,double share,String notes){
+        if(Double.isNaN(share)||Double.isInfinite(share)||share<0||share>100)throw new IllegalArgumentException("درصد سهم باید بین صفر تا صد باشد");
+        SQLiteDatabase database=getWritableDatabase();database.beginTransaction();
+        try{
+            ContentValues v=new ContentValues();v.put("collaboration_mode",mode);v.put("fee_share_percent",share);v.put("financial_notes",notes);v.put("updated_at",now());
+            int updated=database.update("case_collaborators",v,"case_id=? AND collaborator_id=? AND deleted_at IS NULL",new String[]{String.valueOf(caseId),String.valueOf(collaboratorId)});
+            if(updated==0){identity(v);v.put("case_id",caseId);v.put("collaborator_id",collaboratorId);database.insertOrThrow("case_collaborators",null,v);}
+            database.setTransactionSuccessful();
+        }finally{database.endTransaction();}
+    }
+    long addAndLinkCollaborator(long caseId,String first,String last,String license,String body,String phone,String notes,String mode,double share){
+        SQLiteDatabase database=getWritableDatabase();database.beginTransaction();
+        try{long id=addCollaborator(first,last,license,body,phone,notes);linkCollaborator(caseId,id,mode,share,notes);database.setTransactionSuccessful();return id;}finally{database.endTransaction();}
+    }
+    void unlinkCollaborator(long caseId,long colleagueId){
+        ContentValues tomb=new ContentValues();tomb.put("deleted_at",now());tomb.put("updated_at",now());
+        getWritableDatabase().update("case_collaborators",tomb,"case_id=? AND collaborator_id=? AND deleted_at IS NULL",new String[]{String.valueOf(caseId),String.valueOf(colleagueId)});
+    }
+    List<CaseCollaboratorRecord> caseCollaborators(long caseId){ArrayList<CaseCollaboratorRecord> out=new ArrayList<>();try(Cursor c=getReadableDatabase().rawQuery("SELECT x.id,c.id,c.first_name||' '||c.last_name,c.license_number,x.collaboration_mode,COALESCE(x.fee_share_percent,0),x.financial_notes FROM case_collaborators x JOIN collaborators c ON c.id=x.collaborator_id WHERE x.case_id=? AND x.deleted_at IS NULL AND c.deleted_at IS NULL ORDER BY c.last_name,c.first_name",new String[]{String.valueOf(caseId)})){while(c.moveToNext())out.add(new CaseCollaboratorRecord(c.getLong(0),c.getLong(1),c.getString(2),c.getString(3),c.getString(4),c.getDouble(5),c.getString(6)));}return out;}
+
+    long addRepresentationContract(Long caseId,String number,String date,String subject,String scope,long fee,boolean opponentsAny,String opponents,boolean delegation,String collaborationMode,String notes,List<Long> clientIds,List<Long> collaboratorIds){
+        if(blank(number))throw new IllegalArgumentException("شماره قرارداد الزامی است");if(clientIds==null||clientIds.isEmpty())throw new IllegalArgumentException("حداقل یک موکل باید به قرارداد متصل باشد");SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{ContentValues v=new ContentValues();identity(v);if(caseId!=null&&caseId>0)v.put("case_id",caseId);else v.putNull("case_id");v.put("contract_number",number);v.put("contract_date",date);v.put("subject",subject);v.put("authority_scope",scope);v.put("fee_amount",fee);v.put("opponents_any",opponentsAny?1:0);v.put("opponents_text",opponents);v.put("delegation_allowed",delegation?1:0);v.put("collaboration_mode",collaborationMode);v.put("notes",notes);long id=db.insertOrThrow("representation_contracts",null,v);for(Long clientId:new java.util.LinkedHashSet<>(clientIds)){if(caseId!=null&&caseId>0&&!isClientLinked(caseId,clientId))addCaseClient(db,caseId,clientId,"موکل قرارداد",false,false);ContentValues link=new ContentValues();identity(link);link.put("contract_id",id);link.put("client_id",clientId);db.insertOrThrow("contract_clients",null,link);}if(collaboratorIds!=null)for(Long collaboratorId:collaboratorIds){ContentValues link=new ContentValues();identity(link);link.put("contract_id",id);link.put("collaborator_id",collaboratorId);link.put("collaboration_mode",collaborationMode);if(caseId!=null)try(Cursor share=db.rawQuery("SELECT fee_share_percent,financial_notes FROM case_collaborators WHERE case_id=? AND collaborator_id=? AND deleted_at IS NULL ORDER BY id DESC LIMIT 1",new String[]{String.valueOf(caseId),String.valueOf(collaboratorId)})){if(share.moveToFirst()){if(!share.isNull(0))link.put("fee_share_percent",share.getDouble(0));link.put("notes",share.getString(1));}}db.insertOrThrow("contract_collaborators",null,link);}db.setTransactionSuccessful();return id;}finally{db.endTransaction();}}
+    List<RepresentationContractRecord> representationContracts(Long caseId,Long clientId){ArrayList<RepresentationContractRecord> out=new ArrayList<>();StringBuilder where=new StringBuilder(" WHERE rc.deleted_at IS NULL");ArrayList<String> args=new ArrayList<>();if(caseId!=null){where.append(" AND rc.case_id=?");args.add(String.valueOf(caseId));}if(clientId!=null){where.append(" AND EXISTS(SELECT 1 FROM contract_clients x WHERE x.contract_id=rc.id AND x.client_id=? AND x.deleted_at IS NULL)");args.add(String.valueOf(clientId));}try(Cursor c=getReadableDatabase().rawQuery("SELECT rc.id,rc.contract_number,rc.contract_date,rc.subject,rc.authority_scope,rc.fee_amount,rc.opponents_any,rc.opponents_text,rc.delegation_allowed,rc.collaboration_mode,rc.notes,COALESCE(rc.case_id,0) FROM representation_contracts rc"+where+" ORDER BY rc.contract_date DESC,rc.id DESC",args.toArray(new String[0]))){while(c.moveToNext())out.add(new RepresentationContractRecord(c.getLong(0),c.getString(1),c.getString(2),c.getString(3),c.getString(4),c.getLong(5),c.getInt(6)!=0,c.getString(7),c.getInt(8)!=0,c.getString(9),c.getString(10),c.getLong(11)));}return out;}
+    String contractClientNames(long contractId){return joined("SELECT GROUP_CONCAT(c.name,'، ') FROM contract_clients x JOIN clients c ON c.id=x.client_id WHERE x.contract_id=? AND x.deleted_at IS NULL AND c.deleted_at IS NULL",contractId);}
+    String contractCollaboratorNames(long contractId){return joined("SELECT GROUP_CONCAT(c.first_name||' '||c.last_name,'، ') FROM contract_collaborators x JOIN collaborators c ON c.id=x.collaborator_id WHERE x.contract_id=? AND x.deleted_at IS NULL AND c.deleted_at IS NULL",contractId);}
+    String caseOpponentText(long caseId){return joined("SELECT GROUP_CONCAT(CASE WHEN opponents_any=1 THEN 'هر شخص حقیقی یا حقوقی' ELSE opponents_text END,'، ') FROM representation_contracts WHERE case_id=? AND deleted_at IS NULL",caseId);}
+    void deleteRepresentationContract(long id){SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{String deleted=now();ContentValues tomb=new ContentValues();tomb.put("deleted_at",deleted);tomb.put("updated_at",deleted);db.update("contract_clients",tomb,"contract_id=? AND deleted_at IS NULL",new String[]{String.valueOf(id)});db.update("contract_collaborators",tomb,"contract_id=? AND deleted_at IS NULL",new String[]{String.valueOf(id)});if(db.update("representation_contracts",tomb,"id=? AND deleted_at IS NULL",new String[]{String.valueOf(id)})!=1)throw new IllegalArgumentException("قرارداد یافت نشد");db.setTransactionSuccessful();}finally{db.endTransaction();}}
+
+    long addFinancialContract(long caseId,String date,long total,String terms,String notes){if(total<0)throw new IllegalArgumentException("مبلغ قرارداد نمی‌تواند منفی باشد");ContentValues v=new ContentValues();identity(v);v.put("case_id",caseId);v.put("contract_date",date);v.put("total_amount",total);v.put("payment_terms",terms);v.put("notes",notes);return getWritableDatabase().insertOrThrow("financial_contracts",null,v);}
+    List<FinancialContractRecord> financialContracts(long caseId){ArrayList<FinancialContractRecord> out=new ArrayList<>();try(Cursor c=getReadableDatabase().rawQuery("SELECT id,contract_date,total_amount,payment_terms,notes FROM financial_contracts WHERE case_id=? AND deleted_at IS NULL ORDER BY contract_date DESC,id DESC",new String[]{String.valueOf(caseId)})){while(c.moveToNext())out.add(new FinancialContractRecord(c.getLong(0),c.getString(1),c.getLong(2),c.getString(3),c.getString(4)));}return out;}
+    long addPaymentCheck(long caseId,Long installmentId,String number,String dueDate,long amount,String bank,String branch,String status,String notes){if(amount<=0)throw new IllegalArgumentException("مبلغ چک باید مثبت باشد");if(blank(number))throw new IllegalArgumentException("شماره چک الزامی است");SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{ContentValues v=new ContentValues();identity(v);v.put("case_id",caseId);if(installmentId!=null)v.put("installment_id",installmentId);v.put("check_number",number);v.put("due_date",dueDate);v.put("amount",amount);v.put("bank",bank);v.put("branch",branch);v.put("collection_status",status);v.put("notes",notes);long id=db.insertOrThrow("payment_checks",null,v);if("pending".equals(status))addStageReminders(db,"check",id,dueDate,"09:00",new int[]{7,3,2,1,0});if("collected".equals(status))updatePaymentCheckStatus(id,status);db.setTransactionSuccessful();return id;}finally{db.endTransaction();}}
+    List<PaymentCheckRecord> paymentChecks(Long caseId,String dueBefore){ArrayList<PaymentCheckRecord> out=new ArrayList<>();StringBuilder w=new StringBuilder(" WHERE deleted_at IS NULL");ArrayList<String>a=new ArrayList<>();if(caseId!=null){w.append(" AND case_id=?");a.add(String.valueOf(caseId));}if(dueBefore!=null){w.append(" AND due_date<=?");a.add(dueBefore);}try(Cursor c=getReadableDatabase().rawQuery("SELECT id,case_id,check_number,due_date,amount,bank,branch,collection_status,notes FROM payment_checks"+w+" ORDER BY due_date,id",a.toArray(new String[0]))){while(c.moveToNext())out.add(new PaymentCheckRecord(c.getLong(0),c.getLong(1),c.getString(2),c.getString(3),c.getLong(4),c.getString(5),c.getString(6),c.getString(7),c.getString(8)));}return out;}
+    void updatePaymentCheckStatus(long id,String status){updatePaymentCheckStatus(id,status,JalaliDate.today().value(),"موکل");}
+    long recordInstallmentCheck(long caseId,long installmentId,String number,String dueDate,long amount,String bank,String branch,String status,String notes,String paidDate,String payer) {
+        SQLiteDatabase database=getWritableDatabase();database.beginTransaction();
+        try {
+            long id=addPaymentCheck(caseId,installmentId,number,dueDate,amount,bank,branch,"pending",notes);
+            if(!"pending".equals(status))updatePaymentCheckStatus(id,status,paidDate,payer);
+            database.setTransactionSuccessful();return id;
+        } finally {database.endTransaction();}
+    }
+    void updatePaymentCheckStatus(long id,String status,String paymentDate,String payer){
+        if(!java.util.Arrays.asList("pending","collected","bounced","cancelled").contains(status))throw new IllegalArgumentException("وضعیت چک معتبر نیست");
+        paymentDate=JalaliDate.parse(paymentDate).value();
+        SQLiteDatabase database=getWritableDatabase();database.beginTransaction();
+        try {
+            long caseId,amount;Long installmentId,ledgerId;String previous,number,dueDate;
+            try(Cursor c=database.rawQuery("SELECT case_id,amount,installment_id,collection_ledger_id,collection_status,check_number,due_date FROM payment_checks WHERE id=? AND deleted_at IS NULL",new String[]{String.valueOf(id)})){
+                if(!c.moveToFirst())throw new IllegalArgumentException("چک یافت نشد");
+                caseId=c.getLong(0);amount=c.getLong(1);installmentId=c.isNull(2)?null:c.getLong(2);ledgerId=c.isNull(3)?null:c.getLong(3);previous=c.getString(4);number=c.getString(5);dueDate=c.getString(6);
+            }
+            if("collected".equals(status)&&ledgerId==null) {
+                if(installmentId!=null){
+                    payInstallment(installmentId,amount,paymentDate,payer,"check",id,"وصول چک "+number);
+                    try(Cursor c=database.rawQuery("SELECT ledger_id FROM installment_payments WHERE check_id=? AND deleted_at IS NULL ORDER BY id DESC LIMIT 1",new String[]{String.valueOf(id)})){if(!c.moveToFirst())throw new IllegalStateException("پرداخت چک ثبت نشد");ledgerId=c.getLong(0);}
+                } else {
+                    ContentValues receipt=new ContentValues();identity(receipt);receipt.put("case_id",caseId);receipt.put("kind","payment");receipt.put("category","حق‌الوکاله");receipt.put("amount",amount);receipt.put("entry_date",paymentDate);receipt.put("paid_by",payer);receipt.put("description","وصول چک "+number);
+                    ledgerId=database.insertOrThrow("ledger",null,receipt);
+                }
+            } else if(!"collected".equals(status)&&ledgerId!=null) {
+                ContentValues tomb=new ContentValues();tomb.put("deleted_at",now());tomb.put("updated_at",now());
+                database.update("ledger",tomb,"id=?",new String[]{String.valueOf(ledgerId)});
+                database.update("installment_payments",tomb,"check_id=? AND deleted_at IS NULL",new String[]{String.valueOf(id)});
+                ledgerId=null;
+            }
+            ContentValues v=new ContentValues();v.put("collection_status",status);v.put("updated_at",now());
+            if(ledgerId==null)v.putNull("collection_ledger_id");else v.put("collection_ledger_id",ledgerId);
+            database.update("payment_checks",v,"id=?",new String[]{String.valueOf(id)});
+            if(!status.equals(previous)){
+                ContentValues tomb=new ContentValues();tomb.put("deleted_at",now());tomb.put("updated_at",now());
+                database.update("reminders",tomb,"target_type='check' AND target_id=? AND deleted_at IS NULL",new String[]{String.valueOf(id)});
+                if("pending".equals(status))addStageReminders(database,"check",id,dueDate,"09:00",new int[]{7,3,2,1,0});
+            }
+            database.setTransactionSuccessful();
+        } finally {database.endTransaction();}
+    }
+    void deletePaymentCheck(long id){SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{try(Cursor receipt=db.rawQuery("SELECT collection_ledger_id FROM payment_checks WHERE id=?",new String[]{String.valueOf(id)})){if(receipt.moveToFirst()&&!receipt.isNull(0))throw new IllegalArgumentException("ابتدا وضعیت وصول چک و اثر مالی آن را تعیین تکلیف کنید");}try(Cursor linked=db.rawQuery("SELECT COUNT(*) FROM installment_payments WHERE check_id=? AND deleted_at IS NULL",new String[]{String.valueOf(id)})){if(linked.moveToFirst()&&linked.getInt(0)>0)throw new IllegalArgumentException("چک به یک پرداخت وصول‌شده متصل است و قابل حذف نیست");}String deleted=now();ContentValues tomb=new ContentValues();tomb.put("deleted_at",deleted);tomb.put("updated_at",deleted);db.update("reminders",tomb,"target_type='check' AND target_id=? AND deleted_at IS NULL",new String[]{String.valueOf(id)});if(db.update("payment_checks",tomb,"id=? AND deleted_at IS NULL",new String[]{String.valueOf(id)})!=1)throw new IllegalArgumentException("چک یافت نشد");db.setTransactionSuccessful();}finally{db.endTransaction();}}
+
+    long addCaseAttachment(long caseId,String name,String mime,String uri){if(blank(name)||blank(uri))throw new IllegalArgumentException("فایل معتبر نیست");ContentValues v=new ContentValues();identity(v);v.put("case_id",caseId);v.put("display_name",name);v.put("mime_type",blank(mime)?"application/octet-stream":mime);v.put("content_uri",uri);return getWritableDatabase().insertOrThrow("case_attachments",null,v);}
+    List<CaseAttachmentRecord> caseAttachments(long caseId){ArrayList<CaseAttachmentRecord> out=new ArrayList<>();try(Cursor c=getReadableDatabase().rawQuery("SELECT id,case_id,display_name,mime_type,content_uri,created_at FROM case_attachments WHERE case_id=? AND deleted_at IS NULL ORDER BY id DESC",new String[]{String.valueOf(caseId)})){while(c.moveToNext())out.add(new CaseAttachmentRecord(c.getLong(0),c.getLong(1),c.getString(2),c.getString(3),c.getString(4),c.getString(5)));}return out;}
+    void deleteCaseAttachment(long id){softDelete("case_attachments",id);}
+
     void addTask(String title, String caseName, String date, String time,
                  String priority, String notes) {
         addTask(getWritableDatabase(), title, caseName, date, time, priority, notes);
     }
 
     void addLinkedTask(String title,String kind,Long caseId,Long clientId,String date,String start,String end,String place,String priority,String notes) {
+        addLinkedTask(title,kind,null,false,caseId,clientId,date,start,end,place,priority,notes);
+    }
+    void addLinkedTask(String title,String kind,String category,boolean personal,Long caseId,Long clientId,String date,String start,String end,String place,String priority,String notes) {
         ContentValues v=new ContentValues();v.put("title",title);v.put("kind",kind);
+        v.put("category",category);v.put("is_personal",personal?1:0);
         if(caseId!=null)v.put("case_id",caseId);if(clientId!=null)v.put("client_id",clientId);
         v.put("due_date",date);v.put("due_time",start);v.put("end_time",end);v.put("place",place);
         v.put("priority",priority);v.put("notes",notes);v.put("status","open");identity(v);
@@ -315,8 +538,8 @@ final class OfficeDb extends SQLiteOpenHelper {
     List<WorkLogRecord> workLogs(Long caseId,Long clientId) {
         ArrayList<WorkLogRecord> result=new ArrayList<>(); StringBuilder w=new StringBuilder(" WHERE 1=1"); ArrayList<String> a=new ArrayList<>();
         w.append(" AND w.deleted_at IS NULL");if(caseId!=null){w.append(" AND w.case_id=?");a.add(String.valueOf(caseId));}
-        if(clientId!=null){w.append(" AND w.client_id=?");a.add(String.valueOf(clientId));}
-        Cursor c=getReadableDatabase().rawQuery("SELECT w.id,w.case_id,w.client_id,w.action_type,w.action_date,w.description,cs.title,cl.name FROM worklogs w LEFT JOIN cases cs ON cs.id=w.case_id LEFT JOIN clients cl ON cl.id=w.client_id"+w+" ORDER BY w.action_date DESC,w.id DESC",a.toArray(new String[0]));
+        if(clientId!=null){w.append(" AND (w.client_id=? OR EXISTS(SELECT 1 FROM case_clients cc WHERE cc.case_id=w.case_id AND cc.client_id=? AND cc.deleted_at IS NULL))");a.add(String.valueOf(clientId));a.add(String.valueOf(clientId));}
+        Cursor c=getReadableDatabase().rawQuery("SELECT w.id,w.case_id,w.client_id,w.action_type,w.action_date,w.description,cs.title,COALESCE(cl.name,(SELECT GROUP_CONCAT(cl2.name,'، ') FROM case_clients cc2 JOIN clients cl2 ON cl2.id=cc2.client_id WHERE cc2.case_id=w.case_id AND cc2.deleted_at IS NULL AND cl2.deleted_at IS NULL)) FROM worklogs w LEFT JOIN cases cs ON cs.id=w.case_id LEFT JOIN clients cl ON cl.id=w.client_id"+w+" ORDER BY w.action_date DESC,w.id DESC",a.toArray(new String[0]));
         while(c.moveToNext())result.add(new WorkLogRecord(c.getLong(0),c.getLong(1),c.getLong(2),c.getString(3),c.getString(4),c.getString(5),c.getString(6),c.getString(7)));
         c.close();return result;
     }
@@ -325,8 +548,8 @@ final class OfficeDb extends SQLiteOpenHelper {
         ArrayList<ClientRecord> result = new ArrayList<>();
         Cursor c = getReadableDatabase().rawQuery("SELECT cl.id,cl.name,cl.national_id," +
                 "cl.father_name,cl.birth_date,cl.phone,cl.address,cl.notes," +
-                "COUNT(cs.id),SUM(CASE WHEN cs.status='active' THEN 1 ELSE 0 END) " +
-                "FROM clients cl LEFT JOIN cases cs ON cs.client_id=cl.id AND cs.deleted_at IS NULL WHERE cl.deleted_at IS NULL " +
+                "COUNT(DISTINCT cs.id),COUNT(DISTINCT CASE WHEN cs.status='active' THEN cs.id END) " +
+                "FROM clients cl LEFT JOIN case_clients cc ON cc.client_id=cl.id AND cc.deleted_at IS NULL LEFT JOIN cases cs ON cs.id=cc.case_id AND cs.deleted_at IS NULL WHERE cl.deleted_at IS NULL " +
                 "GROUP BY cl.id ORDER BY cl.name", null);
         while (c.moveToNext()) result.add(new ClientRecord(c.getLong(0), c.getString(1),
                 c.getString(2), c.getString(3), c.getString(4), c.getString(5),
@@ -340,12 +563,12 @@ final class OfficeDb extends SQLiteOpenHelper {
         ArrayList<String> args = new ArrayList<>();
         if (status != null) { where.append(" AND c.status=?"); args.add(status); }
         if (category != null && !"همه".equals(category)) { where.append(" AND c.category=?"); args.add(category); }
-        if (clientId != null) { where.append(" AND c.client_id=?"); args.add(String.valueOf(clientId)); }
+        if (clientId != null) { where.append(" AND EXISTS(SELECT 1 FROM case_clients filter_cc WHERE filter_cc.case_id=c.id AND filter_cc.client_id=? AND filter_cc.deleted_at IS NULL)"); args.add(String.valueOf(clientId)); }
         Cursor c = getReadableDatabase().rawQuery("SELECT c.id,c.title,c.reference,c.stage," +
-                "COALESCE(c.client_id,0),cl.name,c.fee_agreed,c.agreement_notes,c.status," +
+                "COALESCE(c.client_id,0),(SELECT GROUP_CONCAT(cl2.name,'، ') FROM case_clients cc2 JOIN clients cl2 ON cl2.id=cc2.client_id WHERE cc2.case_id=c.id AND cc2.deleted_at IS NULL AND cl2.deleted_at IS NULL),c.fee_agreed,c.agreement_notes,c.status," +
                 "c.category,c.case_number,c.archive_number,c.branch,c.subject,c.claim_text," +
-                "c.evidence,c.summary,c.financial_notes,c.contract_notes,c.authority_type,c.province,c.judicial_city,c.contract_number,c.contract_date FROM cases c " +
-                "LEFT JOIN clients cl ON cl.id=c.client_id" + where + " ORDER BY c.id DESC",
+                "c.evidence,c.summary,c.financial_notes,c.contract_notes,c.authority_type,c.province,c.judicial_city,c.contract_number,c.contract_date,c.judgment_number,c.order_number FROM cases c " +
+                where + " ORDER BY c.id DESC",
                 args.toArray(new String[0]));
         while (c.moveToNext()) result.add(caseFrom(c));
         c.close(); return result;
@@ -367,7 +590,7 @@ final class OfficeDb extends SQLiteOpenHelper {
         while (c.moveToNext()) result.add(taskFrom(c)); c.close(); return result;
     }
 
-    int countCases(String status) { return scalar("SELECT COUNT(*) FROM cases WHERE deleted_at IS NULL AND status=?", status); }
+    int countCases(String status) { return status==null?scalar("SELECT COUNT(*) FROM cases WHERE deleted_at IS NULL",null):scalar("SELECT COUNT(*) FROM cases WHERE deleted_at IS NULL AND status=?", status); }
     int countClients() { return scalar("SELECT COUNT(*) FROM clients WHERE deleted_at IS NULL", null); }
     int countToday(String date) { return scalar("SELECT COUNT(*) FROM tasks WHERE deleted_at IS NULL AND due_date=? AND done=0", date); }
     int countAllTasks() { return scalar("SELECT COUNT(*) FROM tasks WHERE deleted_at IS NULL", null); }
@@ -382,6 +605,8 @@ final class OfficeDb extends SQLiteOpenHelper {
         Cursor c = getReadableDatabase().rawQuery(sql, arg == null ? null : new String[]{arg});
         int value = c.moveToFirst() ? c.getInt(0) : 0; c.close(); return value;
     }
+    private int scalarArgs(String sql,String[] args){try(Cursor c=getReadableDatabase().rawQuery(sql,args)){return c.moveToFirst()?c.getInt(0):0;}}
+    private String joined(String sql,long id){try(Cursor c=getReadableDatabase().rawQuery(sql,new String[]{String.valueOf(id)})){return c.moveToFirst()&&!c.isNull(0)?c.getString(0):"";}}
 
     List<LedgerRecord> ledger(long caseId) {
         ArrayList<LedgerRecord> result = new ArrayList<>();
@@ -404,37 +629,283 @@ final class OfficeDb extends SQLiteOpenHelper {
         a.debt = Math.max(0, net); a.credit = Math.max(0, -net); return a;
     }
 
-    long addInstallment(long caseId,String title,long amount,String dueDate){if(amount<=0)throw new IllegalArgumentException("مبلغ قسط باید مثبت باشد");ContentValues v=new ContentValues();v.put("case_id",caseId);v.put("title",title);v.put("amount",amount);v.put("due_date",dueDate);identity(v);return getWritableDatabase().insertOrThrow("installments",null,v);}
+    long addInstallment(long caseId,String title,long amount,String dueDate){if(amount<=0)throw new IllegalArgumentException("مبلغ قسط باید مثبت باشد");SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{ContentValues v=new ContentValues();v.put("case_id",caseId);v.put("title",title);v.put("amount",amount);v.put("due_date",dueDate);identity(v);long id=db.insertOrThrow("installments",null,v);addStageReminders(db,"installment",id,dueDate,"09:00",new int[]{7,3,2,1,0});db.setTransactionSuccessful();return id;}finally{db.endTransaction();}}
     List<InstallmentRecord> installments(long caseId){ArrayList<InstallmentRecord> out=new ArrayList<>();try(Cursor c=getReadableDatabase().rawQuery("SELECT i.id,i.title,i.amount,i.due_date,COALESCE(SUM(CASE WHEN ip.deleted_at IS NULL AND l.deleted_at IS NULL THEN ip.amount ELSE 0 END),0) paid FROM installments i LEFT JOIN installment_payments ip ON ip.installment_id=i.id LEFT JOIN ledger l ON l.id=ip.ledger_id WHERE i.case_id=? AND i.deleted_at IS NULL GROUP BY i.id ORDER BY i.due_date,i.id",new String[]{String.valueOf(caseId)})){while(c.moveToNext())out.add(new InstallmentRecord(c.getLong(0),c.getString(1),c.getLong(2),c.getString(3),c.getLong(4)));}return out;}
-    void payInstallment(long id,long amount,String date,String payer,String description){if(amount<=0)throw new IllegalArgumentException("مبلغ پرداخت باید مثبت باشد");SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{long caseId,total,paid;try(Cursor c=db.rawQuery("SELECT i.case_id,i.amount,COALESCE(SUM(CASE WHEN ip.deleted_at IS NULL AND l.deleted_at IS NULL THEN ip.amount ELSE 0 END),0) FROM installments i LEFT JOIN installment_payments ip ON ip.installment_id=i.id LEFT JOIN ledger l ON l.id=ip.ledger_id WHERE i.id=? AND i.deleted_at IS NULL GROUP BY i.id",new String[]{String.valueOf(id)})){if(!c.moveToFirst())throw new IllegalArgumentException("قسط یافت نشد");caseId=c.getLong(0);total=c.getLong(1);paid=c.getLong(2);}if(amount>total-paid)throw new IllegalArgumentException("پرداخت بیش از مانده قسط است");ContentValues l=new ContentValues();l.put("case_id",caseId);l.put("kind","payment");l.put("category","حق‌الوکاله");l.put("amount",amount);l.put("entry_date",date);l.put("paid_by",payer);l.put("description",description);identity(l);long ledgerId=db.insertOrThrow("ledger",null,l);ContentValues p=new ContentValues();p.put("installment_id",id);p.put("ledger_id",ledgerId);p.put("amount",amount);identity(p);db.insertOrThrow("installment_payments",null,p);db.setTransactionSuccessful();}finally{db.endTransaction();}}
+    void payInstallment(long id,long amount,String date,String payer,String description){payInstallment(id,amount,date,payer,"transfer",null,description);}
+    void payInstallment(long id,long amount,String date,String payer,String paymentMethod,Long checkId,String description){if(amount<=0)throw new IllegalArgumentException("مبلغ پرداخت باید مثبت باشد");SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{long caseId,total,paid;try(Cursor c=db.rawQuery("SELECT i.case_id,i.amount,COALESCE(SUM(CASE WHEN ip.deleted_at IS NULL AND l.deleted_at IS NULL THEN ip.amount ELSE 0 END),0) FROM installments i LEFT JOIN installment_payments ip ON ip.installment_id=i.id LEFT JOIN ledger l ON l.id=ip.ledger_id WHERE i.id=? AND i.deleted_at IS NULL GROUP BY i.id",new String[]{String.valueOf(id)})){if(!c.moveToFirst())throw new IllegalArgumentException("قسط یافت نشد");caseId=c.getLong(0);total=c.getLong(1);paid=c.getLong(2);}if(amount>total-paid)throw new IllegalArgumentException("پرداخت بیش از مانده قسط است");ContentValues l=new ContentValues();l.put("case_id",caseId);l.put("kind","payment");l.put("category","حق‌الوکاله");l.put("amount",amount);l.put("entry_date",date);l.put("paid_by",payer);l.put("description",description);identity(l);long ledgerId=db.insertOrThrow("ledger",null,l);ContentValues p=new ContentValues();p.put("installment_id",id);p.put("ledger_id",ledgerId);p.put("amount",amount);p.put("payment_method",paymentMethod);if(checkId!=null)p.put("check_id",checkId);identity(p);db.insertOrThrow("installment_payments",null,p);db.setTransactionSuccessful();}finally{db.endTransaction();}}
 
     long addAppointment(String kind,String person,String phone,Long clientId,Long caseId,String date,String start,String end,String place,String notes) {
         ContentValues v=new ContentValues();v.put("kind",kind);v.put("person_name",person);v.put("contact_phone",phone);
         if(clientId!=null)v.put("client_id",clientId);if(caseId!=null)v.put("case_id",caseId);
         v.put("visit_date",date);v.put("start_time",start);v.put("end_time",end);v.put("place",place);v.put("notes",notes);identity(v);
-        SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{long id=db.insertOrThrow("appointments",null,v);addStageReminders(db,"appointment",id,date,start,new int[]{1,0});db.setTransactionSuccessful();return id;}finally{db.endTransaction();}
+        SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{long id=db.insertOrThrow("appointments",null,v);addStageReminders(db,"appointment",id,date,start,new int[]{7,3,2,1,0});db.setTransactionSuccessful();return id;}finally{db.endTransaction();}
     }
 
     List<AppointmentRecord> appointments(String date){ArrayList<AppointmentRecord> list=new ArrayList<>();
-        String sql="SELECT a.id,a.kind,a.person_name,a.contact_phone,a.visit_date,a.start_time,a.end_time,a.place,a.notes,COALESCE(a.client_id,0),COALESCE(a.case_id,0),c.title FROM appointments a LEFT JOIN cases c ON c.id=a.case_id WHERE a.deleted_at IS NULL"+(date==null?"":" AND a.visit_date=?")+" ORDER BY a.visit_date,a.start_time,a.id";
+        String sql="SELECT a.id,a.kind,a.person_name,a.contact_phone,a.visit_date,a.start_time,a.end_time,a.place,a.notes,COALESCE(a.client_id,0),COALESCE(a.case_id,0),c.title,a.branch,a.authority,a.city,a.attendance_status,a.completed_at FROM appointments a LEFT JOIN cases c ON c.id=a.case_id WHERE a.deleted_at IS NULL"+(date==null?"":" AND a.visit_date=?")+" ORDER BY a.visit_date,a.start_time,a.id";
         Cursor c=getReadableDatabase().rawQuery(sql,date==null?null:new String[]{date});
-        while(c.moveToNext())list.add(new AppointmentRecord(c.getLong(0),c.getString(1),c.getString(2),c.getString(3),c.getString(4),c.getString(5),c.getString(6),c.getString(7),c.getString(8),c.getLong(9),c.getLong(10),c.getString(11)));c.close();return list;
+        while(c.moveToNext()){AppointmentRecord record=new AppointmentRecord(c.getLong(0),c.getString(1),c.getString(2),c.getString(3),c.getString(4),c.getString(5),c.getString(6),c.getString(7),c.getString(8),c.getLong(9),c.getLong(10),c.getString(11));record.branch=c.getString(12);record.authority=c.getString(13);record.city=c.getString(14);record.attendance=c.getString(15);record.completedAt=c.getString(16);list.add(record);}c.close();return list;
     }
 
-    long addDeadline(long caseId,String title,String eventDate,String dueDate,int duration,String notes){SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{ContentValues v=new ContentValues();v.put("case_id",caseId);v.put("title",title);v.put("event_date",eventDate);v.put("due_date",dueDate);v.put("duration_days",duration);v.put("notes",notes);identity(v);long id=db.insertOrThrow("deadlines",null,v);addStageReminders(db,"deadline",id,dueDate,"09:00",new int[]{7,3,1,0});db.setTransactionSuccessful();return id;}finally{db.endTransaction();}}
+    long addDeadline(long caseId,String title,String eventDate,String dueDate,int duration,String notes){SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{ContentValues v=new ContentValues();v.put("case_id",caseId);v.put("title",title);v.put("event_date",eventDate);v.put("due_date",dueDate);v.put("duration_days",duration);v.put("notes",notes);identity(v);long id=db.insertOrThrow("deadlines",null,v);addStageReminders(db,"deadline",id,dueDate,"09:00",new int[]{7,3,2,1,0});db.setTransactionSuccessful();return id;}finally{db.endTransaction();}}
     private void addStageReminders(SQLiteDatabase db,String type,long target,String date,String clock,int[] days){java.util.Calendar base=JalaliDate.calendar(date);String[] hm=clock!=null&&clock.matches("[0-2][0-9]:[0-5][0-9]")?clock.split(":"):new String[]{"09","00"};base.set(java.util.Calendar.HOUR_OF_DAY,Integer.parseInt(hm[0]));base.set(java.util.Calendar.MINUTE,Integer.parseInt(hm[1]));for(int advance:days){java.util.Calendar at=(java.util.Calendar)base.clone();at.add(java.util.Calendar.DAY_OF_YEAR,-advance);ContentValues r=new ContentValues();r.put("target_type",type);r.put("target_id",target);r.put("advance_days",advance);r.put("trigger_at",at.getTimeInMillis());identity(r);db.insertOrThrow("reminders",null,r);}}
-    void ensureReminderRules(){SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{String[] types={"deadline","appointment","task"},queries={"SELECT id,due_date,'09:00' FROM deadlines WHERE completed=0 AND deleted_at IS NULL","SELECT id,visit_date,start_time FROM appointments WHERE deleted_at IS NULL","SELECT id,due_date,due_time FROM tasks WHERE done=0 AND due_date IS NOT NULL AND deleted_at IS NULL"};for(int i=0;i<types.length;i++)try(Cursor c=db.rawQuery(queries[i],null)){while(c.moveToNext()){String type=types[i];long id=c.getLong(0);try(Cursor exists=db.rawQuery("SELECT 1 FROM reminders WHERE target_type=? AND target_id=? LIMIT 1",new String[]{type,String.valueOf(id)})){if(exists.moveToFirst())continue;}try{addStageReminders(db,type,id,JalaliDate.parse(c.getString(1)).value(),c.getString(2),i==0?new int[]{7,3,1,0}:new int[]{1,0});}catch(IllegalArgumentException invalidDate){/* Legacy free-text dates do not block database opening. */}}}db.setTransactionSuccessful();}finally{db.endTransaction();}}
-    void completeDeadline(long id){ContentValues v=new ContentValues();v.put("completed",1);v.put("updated_at",now());getWritableDatabase().update("deadlines",v,"id=?",new String[]{String.valueOf(id)});}
-    private static final String ACTIVE_REMINDER="((target_type='deadline' AND EXISTS(SELECT 1 FROM deadlines d JOIN cases cs ON cs.id=d.case_id WHERE d.id=reminders.target_id AND d.completed=0 AND d.deleted_at IS NULL AND cs.deleted_at IS NULL)) OR (target_type='task' AND EXISTS(SELECT 1 FROM tasks t WHERE t.id=reminders.target_id AND t.done=0 AND t.deleted_at IS NULL)) OR (target_type='appointment' AND EXISTS(SELECT 1 FROM appointments a WHERE a.id=reminders.target_id AND a.deleted_at IS NULL)))";
-    List<ReminderRecord> pendingReminders(){ArrayList<ReminderRecord> out=new ArrayList<>();try(Cursor c=getReadableDatabase().rawQuery("SELECT id,trigger_at,advance_days,target_type FROM reminders WHERE deleted_at IS NULL AND fired_at IS NULL AND trigger_at>? AND "+ACTIVE_REMINDER+" ORDER BY trigger_at LIMIT 1000",new String[]{String.valueOf(System.currentTimeMillis())})){while(c.moveToNext())out.add(new ReminderRecord(c.getLong(0),c.getLong(1),c.getInt(2),c.getString(3)));}return out;}
+    void ensureReminderRules(){SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{String[] types={"deadline","appointment","task","installment","check"},queries={"SELECT id,due_date,'09:00' FROM deadlines WHERE completed=0 AND deleted_at IS NULL","SELECT id,visit_date,start_time FROM appointments WHERE deleted_at IS NULL AND attendance_status='planned'","SELECT id,due_date,due_time FROM tasks WHERE done=0 AND due_date IS NOT NULL AND deleted_at IS NULL","SELECT i.id,i.due_date,'09:00' FROM installments i WHERE i.deleted_at IS NULL AND i.amount>(SELECT COALESCE(SUM(ip.amount),0) FROM installment_payments ip WHERE ip.installment_id=i.id AND ip.deleted_at IS NULL)","SELECT id,due_date,'09:00' FROM payment_checks WHERE deleted_at IS NULL AND collection_status='pending'"};for(int i=0;i<types.length;i++)try(Cursor c=db.rawQuery(queries[i],null)){while(c.moveToNext()){String type=types[i];long id=c.getLong(0);try(Cursor exists=db.rawQuery("SELECT 1 FROM reminders WHERE target_type=? AND target_id=? LIMIT 1",new String[]{type,String.valueOf(id)})){if(exists.moveToFirst())continue;}try{addStageReminders(db,type,id,JalaliDate.parse(c.getString(1)).value(),c.getString(2),(i!=2)?new int[]{7,3,2,1,0}:new int[]{1,0});}catch(IllegalArgumentException invalidDate){/* Legacy free-text dates do not block database opening. */}}}db.setTransactionSuccessful();}finally{db.endTransaction();}}
+    void completeDeadline(long id){setScheduleStatus("deadline",id,"completed");}
+
+    void setScheduleStatus(String type,long id,String state) {
+        if(!java.util.Arrays.asList("planned","completed","cancelled","absent").contains(state))
+            throw new IllegalArgumentException("وضعیت معتبر نیست");
+        ContentValues v=new ContentValues();String timestamp=now();
+        if("deadline".equals(type))v.put("completed","completed".equals(state)?1:"cancelled".equals(state)?2:0);
+        else if("appointment".equals(type))v.put("attendance_status",state);
+        else throw new IllegalArgumentException("نوع موعد معتبر نیست");
+        if("completed".equals(state))v.put("completed_at",timestamp);else v.putNull("completed_at");
+        v.put("updated_at",timestamp);
+        getWritableDatabase().update("deadline".equals(type)?"deadlines":"appointments",v,"id=? AND deleted_at IS NULL",new String[]{String.valueOf(id)});
+    }
+
+    void setAppointmentLocation(long id,String branch,String authority,String city) {
+        ContentValues v=new ContentValues();v.put("branch",branch);v.put("authority",authority);v.put("city",city);v.put("updated_at",now());
+        getWritableDatabase().update("appointments",v,"id=?",new String[]{String.valueOf(id)});
+    }
+
+    long saveAppointment(String kind,String person,String phone,Long clientId,Long caseId,String date,String start,String end,String place,String notes,String branch,String authority,String city) {
+        date=JalaliDate.parse(date).value();start=InputValidators.normalizeClock(start);
+        end=blank(end)?"":InputValidators.normalizeClock(end);
+        if(!blank(end)&&end.compareTo(start)<=0)throw new IllegalArgumentException("پایان باید بعد از شروع باشد");
+        if(caseId!=null&&clientId!=null&&!isClientLinked(caseId,clientId))throw new IllegalArgumentException("موکل به پرونده مرتبط نیست");
+        SQLiteDatabase database=getWritableDatabase();database.beginTransaction();
+        try{long id=addAppointment(kind,person,phone,clientId,caseId,date,start,end,place,notes);setAppointmentLocation(id,branch,authority,city);database.setTransactionSuccessful();return id;}finally{database.endTransaction();}
+    }
+
+    void editAppointmentDetails(long id,String kind,String person,String phone,Long clientId,Long caseId,String place,String notes,String branch,String authority,String city) {
+        if(blank(kind)||blank(person))throw new IllegalArgumentException("نوع جلسه و نام مراجعه‌کننده لازم است");
+        SQLiteDatabase database=getWritableDatabase();database.beginTransaction();
+        try {
+            if(clientId!=null&&scalarArgs("SELECT COUNT(*) FROM clients WHERE id=? AND deleted_at IS NULL",new String[]{String.valueOf(clientId)})!=1)throw new IllegalArgumentException("موکل در دسترس نیست");
+            if(caseId!=null&&scalarArgs("SELECT COUNT(*) FROM cases WHERE id=? AND deleted_at IS NULL",new String[]{String.valueOf(caseId)})!=1)throw new IllegalArgumentException("پرونده در دسترس نیست");
+            if(caseId!=null&&clientId!=null&&!isClientLinked(caseId,clientId))throw new IllegalArgumentException("موکل به پرونده مرتبط نیست");
+            ContentValues v=new ContentValues();v.put("kind",kind.trim());v.put("person_name",person.trim());v.put("contact_phone",phone);
+            if(clientId==null)v.putNull("client_id");else v.put("client_id",clientId);
+            if(caseId==null)v.putNull("case_id");else v.put("case_id",caseId);
+            v.put("place",place);v.put("notes",notes);v.put("branch",branch);v.put("authority",authority);v.put("city",city);v.put("updated_at",now());v.put("is_demo",0);
+            if(database.update("appointments",v,"id=? AND deleted_at IS NULL",new String[]{String.valueOf(id)})!=1)throw new IllegalArgumentException("جلسه در دسترس نیست");
+            database.setTransactionSuccessful();
+        } finally {database.endTransaction();}
+    }
+
+    long saveDeadline(long caseId,Long clientId,String title,String eventDate,String dueDate,int duration,String notes) {
+        eventDate=JalaliDate.parse(eventDate).value();dueDate=JalaliDate.parse(dueDate).value();
+        if(JalaliDate.daysBetween(eventDate,dueDate)<0||duration<1||duration>3650)throw new IllegalArgumentException("بازه مهلت معتبر نیست");
+        SQLiteDatabase database=getWritableDatabase();database.beginTransaction();
+        try{long id=addDeadline(caseId,title,eventDate,dueDate,duration,notes);setDeadlineClient(id,caseId,clientId);database.setTransactionSuccessful();return id;}finally{database.endTransaction();}
+    }
+
+    Long deadlineClientId(long id){
+        try(Cursor c=getReadableDatabase().rawQuery("SELECT client_id FROM deadlines WHERE id=? AND deleted_at IS NULL",new String[]{String.valueOf(id)})){
+            return c.moveToFirst()&&!c.isNull(0)?c.getLong(0):null;
+        }
+    }
+    void editDeadline(long id,long caseId,Long clientId,String title,String eventDate,String dueDate,int duration,String notes){
+        eventDate=JalaliDate.parse(eventDate).value();dueDate=JalaliDate.parse(dueDate).value();
+        if(blank(title)||JalaliDate.daysBetween(eventDate,dueDate)<0||duration<1||duration>3650)throw new IllegalArgumentException("عنوان، تاریخ یا مدت مهلت معتبر نیست");
+        SQLiteDatabase database=getWritableDatabase();database.beginTransaction();
+        try {
+            if(clientId!=null&&!isClientLinked(caseId,clientId))throw new IllegalArgumentException("موکل به این پرونده مرتبط نیست");
+            String previous;
+            try(Cursor c=database.rawQuery("SELECT d.due_date FROM deadlines d JOIN cases c ON c.id=d.case_id WHERE d.id=? AND d.case_id=? AND d.deleted_at IS NULL AND c.deleted_at IS NULL",new String[]{String.valueOf(id),String.valueOf(caseId)})){
+                if(!c.moveToFirst())throw new IllegalArgumentException("مهلت یا پرونده در دسترس نیست");previous=c.getString(0);
+            }
+            ContentValues v=new ContentValues();v.put("title",title.trim());v.put("event_date",eventDate);v.put("duration_days",duration);v.put("notes",notes);v.put("updated_at",now());v.put("is_demo",0);
+            if(clientId==null)v.putNull("client_id");else v.put("client_id",clientId);
+            database.update("deadlines",v,"id=?",new String[]{String.valueOf(id)});
+            if(!dueDate.equals(previous))changeScheduleDate("deadline",id,dueDate,"09:00","");
+            database.setTransactionSuccessful();
+        } finally {database.endTransaction();}
+    }
+
+    void setDeadlineClient(long id,long caseId,Long clientId) {
+        if(clientId!=null&&!isClientLinked(caseId,clientId))throw new IllegalArgumentException("موکل به این پرونده مرتبط نیست");
+        ContentValues v=new ContentValues();if(clientId==null)v.putNull("client_id");else v.put("client_id",clientId);v.put("updated_at",now());
+        getWritableDatabase().update("deadlines",v,"id=? AND case_id=?",new String[]{String.valueOf(id),String.valueOf(caseId)});
+    }
+
+    /** Per-target reminders, including preparation events; no global fixed-stage replacement. */
+    long addCustomReminder(String type,long target,String date,String time,String label) {
+        if(!"deadline".equals(type)&&!"appointment".equals(type))throw new IllegalArgumentException("نوع موعد معتبر نیست");
+        java.util.Calendar c=JalaliDate.calendar(JalaliDate.parse(date).value());
+        String[] parts=InputValidators.normalizeClock(time).split(":");
+        c.set(java.util.Calendar.HOUR_OF_DAY,Integer.parseInt(parts[0]));c.set(java.util.Calendar.MINUTE,Integer.parseInt(parts[1]));
+        c.set(java.util.Calendar.SECOND,0);c.set(java.util.Calendar.MILLISECOND,0);
+        if(c.getTimeInMillis()<=System.currentTimeMillis())throw new IllegalArgumentException("یادآوری باید در آینده باشد");
+        SQLiteDatabase database=getWritableDatabase();database.beginTransaction();
+        try {
+            try(Cursor existing=database.rawQuery("SELECT id FROM reminders WHERE target_type=? AND target_id=? AND trigger_at=? AND deleted_at IS NULL",new String[]{type,String.valueOf(target),String.valueOf(c.getTimeInMillis())})) {
+                if(existing.moveToFirst())throw new IllegalArgumentException("برای این ساعت یادآوری ثبت شده است");
+            }
+            ContentValues v=new ContentValues();identity(v);v.put("target_type",type);v.put("target_id",target);v.put("trigger_at",c.getTimeInMillis());v.put("advance_days",0);v.put("label",label);
+            long id=database.insertOrThrow("reminders",null,v);database.setTransactionSuccessful();return id;
+        } finally {database.endTransaction();}
+    }
+
+    List<ReminderRecord> remindersFor(String type,long target) {
+        ArrayList<ReminderRecord> list=new ArrayList<>();
+        try(Cursor c=getReadableDatabase().rawQuery("SELECT id,trigger_at,advance_days,target_type,label FROM reminders WHERE target_type=? AND target_id=? AND deleted_at IS NULL ORDER BY trigger_at",new String[]{type,String.valueOf(target)})) {
+            while(c.moveToNext()){ReminderRecord r=new ReminderRecord(c.getLong(0),c.getLong(1),c.getInt(2),c.getString(3));r.label=c.getString(4);list.add(r);}
+        }
+        return list;
+    }
+
+    void removeReminder(long id) {
+        ContentValues v=new ContentValues();v.put("deleted_at",now());v.put("updated_at",now());
+        getWritableDatabase().update("reminders",v,"id=?",new String[]{String.valueOf(id)});
+    }
+
+    String reminderLabel(long id) {
+        try(Cursor c=getReadableDatabase().rawQuery("SELECT label FROM reminders WHERE id=?",new String[]{String.valueOf(id)})){return c.moveToFirst()?c.getString(0):"";}
+    }
+
+    void changeScheduleDate(String type,long id,String date,String start,String end) {
+        date=JalaliDate.parse(date).value();
+        boolean deadline="deadline".equals(type);
+        if(!deadline&&!"appointment".equals(type))throw new IllegalArgumentException("نوع موعد معتبر نیست");
+        if(!deadline){start=InputValidators.normalizeClock(start);end=blank(end)?"":InputValidators.normalizeClock(end);if(!blank(end)&&end.compareTo(start)<=0)throw new IllegalArgumentException("پایان باید بعد از شروع باشد");}
+        SQLiteDatabase database=getWritableDatabase();database.beginTransaction();
+        try {
+            if(deadline)try(Cursor c=database.rawQuery("SELECT event_date FROM deadlines WHERE id=?",new String[]{String.valueOf(id)})){if(!c.moveToFirst()||JalaliDate.daysBetween(c.getString(0),date)<0)throw new IllegalArgumentException("تاریخ نهایی پیش از شروع است");}
+            ContentValues v=new ContentValues();v.put(deadline?"due_date":"visit_date",date);v.put("updated_at",now());
+            if(!deadline){v.put("start_time",start);v.put("end_time",end);}
+            database.update(deadline?"deadlines":"appointments",v,"id=?",new String[]{String.valueOf(id)});
+            ContentValues old=new ContentValues();old.put("deleted_at",now());old.put("updated_at",now());
+            database.update("reminders",old,"target_type=? AND target_id=? AND deleted_at IS NULL",new String[]{type,String.valueOf(id)});
+            addStageReminders(database,type,id,date,deadline?"09:00":start,new int[]{7,3,2,1,0});
+            database.setTransactionSuccessful();
+        } finally {database.endTransaction();}
+    }
+    private static final String ACTIVE_REMINDER="((target_type='deadline' AND EXISTS(SELECT 1 FROM deadlines d JOIN cases cs ON cs.id=d.case_id WHERE d.id=reminders.target_id AND d.completed=0 AND d.deleted_at IS NULL AND cs.deleted_at IS NULL)) OR (target_type='task' AND EXISTS(SELECT 1 FROM tasks t WHERE t.id=reminders.target_id AND t.done=0 AND t.deleted_at IS NULL)) OR (target_type='appointment' AND EXISTS(SELECT 1 FROM appointments a WHERE a.id=reminders.target_id AND a.deleted_at IS NULL AND a.attendance_status='planned')) OR (target_type='installment' AND EXISTS(SELECT 1 FROM installments i WHERE i.id=reminders.target_id AND i.deleted_at IS NULL AND i.amount>(SELECT COALESCE(SUM(ip.amount),0) FROM installment_payments ip WHERE ip.installment_id=i.id AND ip.deleted_at IS NULL))) OR (target_type='check' AND EXISTS(SELECT 1 FROM payment_checks pc WHERE pc.id=reminders.target_id AND pc.deleted_at IS NULL AND pc.collection_status='pending')))";
+    List<ReminderRecord> pendingReminders(){
+        ArrayList<ReminderRecord> out=new ArrayList<>();long nowMillis=System.currentTimeMillis();
+        // One latest missed stage per target within 24 hours. Older stages remain history,
+        // never a queue of repeated alerts when the user reopens the application.
+        String window="(trigger_at>? OR (trigger_at>=? AND NOT EXISTS(SELECT 1 FROM reminders newer WHERE newer.target_type=reminders.target_type AND newer.target_id=reminders.target_id AND newer.deleted_at IS NULL AND newer.trigger_at<=? AND (newer.trigger_at>reminders.trigger_at OR (newer.trigger_at=reminders.trigger_at AND newer.id>reminders.id)))))";
+        try(Cursor c=getReadableDatabase().rawQuery("SELECT id,trigger_at,advance_days,target_type FROM reminders WHERE deleted_at IS NULL AND fired_at IS NULL AND "+window+" AND "+ACTIVE_REMINDER+" ORDER BY trigger_at LIMIT 1000",new String[]{String.valueOf(nowMillis),String.valueOf(nowMillis-86400000L),String.valueOf(nowMillis)})){
+            while(c.moveToNext())out.add(new ReminderRecord(c.getLong(0),Math.max(nowMillis+1000,c.getLong(1)),c.getInt(2),c.getString(3)));
+        }
+        return out;
+    }
     boolean fireReminder(long id){ContentValues v=new ContentValues();v.put("fired_at",now());v.put("updated_at",now());SQLiteDatabase db=getWritableDatabase();return db.update("reminders",v,"id=? AND fired_at IS NULL AND deleted_at IS NULL AND "+ACTIVE_REMINDER,new String[]{String.valueOf(id)})==1;}
-    List<DeadlineRecord> deadlines(Long caseId,boolean openOnly){ArrayList<DeadlineRecord> list=new ArrayList<>();ArrayList<String> args=new ArrayList<>();StringBuilder w=new StringBuilder(" WHERE d.deleted_at IS NULL AND c.deleted_at IS NULL");if(caseId!=null){w.append(" AND d.case_id=?");args.add(String.valueOf(caseId));}if(openOnly)w.append(" AND d.completed=0");Cursor c=getReadableDatabase().rawQuery("SELECT d.id,d.case_id,d.title,d.event_date,d.due_date,d.duration_days,d.notes,d.completed,c.title,c.case_number,cl.name FROM deadlines d JOIN cases c ON c.id=d.case_id LEFT JOIN clients cl ON cl.id=c.client_id"+w+" ORDER BY d.due_date,d.id",args.toArray(new String[0]));while(c.moveToNext())list.add(new DeadlineRecord(c.getLong(0),c.getLong(1),c.getString(2),c.getString(3),c.getString(4),c.getInt(5),c.getString(6),c.getInt(7),c.getString(8),c.getString(9),c.getString(10)));c.close();return list;}
+    List<DeadlineRecord> deadlines(Long caseId,boolean openOnly){ArrayList<DeadlineRecord> list=new ArrayList<>();ArrayList<String> args=new ArrayList<>();StringBuilder w=new StringBuilder(" WHERE d.deleted_at IS NULL AND c.deleted_at IS NULL");if(caseId!=null){w.append(" AND d.case_id=?");args.add(String.valueOf(caseId));}if(openOnly)w.append(" AND d.completed=0");Cursor c=getReadableDatabase().rawQuery("SELECT d.id,d.case_id,d.title,d.event_date,d.due_date,d.duration_days,d.notes,d.completed,c.title,c.case_number,cl.name FROM deadlines d JOIN cases c ON c.id=d.case_id LEFT JOIN clients cl ON cl.id=COALESCE(d.client_id,c.client_id)"+w+" ORDER BY d.due_date,d.id",args.toArray(new String[0]));while(c.moveToNext())list.add(new DeadlineRecord(c.getLong(0),c.getLong(1),c.getString(2),c.getString(3),c.getString(4),c.getInt(5),c.getString(6),c.getInt(7),c.getString(8),c.getString(9),c.getString(10)));c.close();return list;}
 
     String clientFinancialText(long clientId){StringBuilder b=new StringBuilder();for(CaseRecord c:cases(null,"همه",clientId))b.append(caseFinancialText(c));return b.toString();}
+
+    static boolean inDateRange(String date,String start,String end){
+        if(start==null&&end==null)return true;
+        if(blank(date))return false;
+        try{date=JalaliDate.parse(date).value();}catch(IllegalArgumentException invalid){return false;}
+        return (start==null||date.compareTo(start)>=0)&&(end==null||date.compareTo(end)<=0);
+    }
+
+    static String localCompletionTime(String timestamp){
+        if(blank(timestamp))return "";
+        try {
+            SimpleDateFormat utc=new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",Locale.US);utc.setTimeZone(TimeZone.getTimeZone("UTC"));
+            java.util.Calendar local=java.util.Calendar.getInstance();local.setTime(utc.parse(timestamp));
+            return JalaliDate.fromGregorian(local.get(java.util.Calendar.YEAR),local.get(java.util.Calendar.MONTH)+1,local.get(java.util.Calendar.DAY_OF_MONTH)).value()+" "+String.format(Locale.US,"%02d:%02d",local.get(java.util.Calendar.HOUR_OF_DAY),local.get(java.util.Calendar.MINUTE));
+        }catch(Exception invalid){return timestamp;}
+    }
+
+    String completedDeadlinesText(String start,String end,Long caseId,Long clientId){
+        StringBuilder text=new StringBuilder();
+        try(Cursor c=getReadableDatabase().rawQuery("SELECT d.title,d.completed_at,d.case_id,cs.title,COALESCE(d.client_id,cs.client_id),d.due_date FROM deadlines d JOIN cases cs ON cs.id=d.case_id WHERE d.completed=1 AND d.completed_at IS NOT NULL AND d.deleted_at IS NULL AND cs.deleted_at IS NULL ORDER BY d.completed_at DESC",null)){
+            while(c.moveToNext()){
+                if(caseId!=null&&caseId!=c.getLong(2))continue;
+                if(clientId!=null&&clientId!=c.getLong(4)&&!isClientLinked(c.getLong(2),clientId))continue;
+                String completion=localCompletionTime(c.getString(1));
+                if(completion.length()<10||!inDateRange(completion.substring(0,10),start,end))continue;
+                text.append("مهلت انجام‌شده: ").append(c.getString(0)).append("\nپرونده: ").append(c.getString(3)).append(" | موعد نهایی: ").append(c.getString(5)).append("\nزمان انجام: ").append(completion).append("\n\n");
+            }
+        }
+        return text.toString();
+    }
+
+    String filteredFinancialText(String start,String end,Long clientId,Long caseId,String status,String caseCategory,boolean debtors,boolean overdueOnly,String kind,String category){
+        if(start!=null)start=JalaliDate.parse(start).value();if(end!=null)end=JalaliDate.parse(end).value();
+        if(start!=null&&end!=null&&start.compareTo(end)>0)throw new IllegalArgumentException("پایان بازه قبل از شروع است");
+        StringBuilder output=new StringBuilder();String today=JalaliDate.today().value();
+        for(CaseRecord c:cases(status,caseCategory,clientId)){
+            if(caseId!=null&&c.id!=caseId)continue;
+            if(debtors&&summary(c).debt<=0)continue;
+            ArrayList<InstallmentRecord> due=new ArrayList<>();
+            for(InstallmentRecord i:installments(c.id))if(i.dueDate.compareTo(today)<=0&&i.paid<i.amount&&inDateRange(i.dueDate,start,end))due.add(i);
+            if(overdueOnly&&due.isEmpty())continue;
+            StringBuilder details=new StringBuilder();long received=0,expenses=0;
+            for(LedgerRecord entry:ledger(c.id)){
+                if(!inDateRange(entry.date,start,end)||(kind!=null&&!kind.equals(entry.kind))||(category!=null&&!category.equals(entry.category)))continue;
+                if("expense".equals(entry.kind))expenses=Math.addExact(expenses,entry.amount);else received=Math.addExact(received,entry.amount);
+                details.append(entry.date).append(" | ").append(entry.category).append(" | ").append(entry.amount).append(" ریال | ").append("expense".equals(entry.kind)?"هزینه":"دریافت").append(" | پرداخت‌کننده: ").append(entry.paidBy).append("\n");
+            }
+            if(!"expense".equals(kind)&&(category==null||"حق‌الوکاله".equals(category))){
+                for(InstallmentRecord i:due)details.append("قسط سررسیدشده: ").append(i.title).append(" | ").append(i.dueDate).append(" | مانده: ").append(i.amount-i.paid).append(" ریال\n");
+                for(PaymentCheckRecord check:paymentChecks(c.id,end))if(inDateRange(check.dueDate,start,end))details.append("چک: ").append(check.number).append(" | ").append(check.dueDate).append(" | مبلغ: ").append(check.amount).append(" ریال | ").append(check.status).append("\n");
+            }
+            if(details.length()==0)continue;
+            output.append("پرونده: ").append(c.title).append(" | ").append(c.caseNumber).append("\nموکلان: ");
+            for(ClientRecord client:caseClients(c.id))output.append(client.name).append("؛ ");
+            output.append("\nجمع دریافت در نتیجه فیلتر: ").append(received).append(" ریال | جمع هزینه در نتیجه فیلتر: ").append(expenses).append(" ریال\n").append(details).append("\n");
+        }
+        return output.length()==0?"نتیجه‌ای مطابق فیلتر وجود ندارد.":output.toString();
+    }
     String caseFinancialText(CaseRecord c){StringBuilder b=new StringBuilder();AccountSummary s=summary(c);b.append("صورت‌حساب موردی پرونده در تاریخ ").append(JalaliDate.today().value()).append("\nموکل: ").append(c.clientName).append(" | پرونده: ").append(c.title).append(" | شماره: ").append(c.caseNumber).append("\nقرارداد شماره ").append(c.contractNumber).append(" مورخ ").append(c.contractDate).append("\nتوافق حق‌الوکاله: ").append(s.agreed).append(" ریال؛ دریافتی: ").append(s.received).append(" ریال\nهزینه‌ها: ").append(s.expenses).append(" ریال؛ هزینه پرداختی وکیل: ").append(s.lawyerPaid).append(" ریال؛ بدهی: ").append(s.debt).append(" ریال؛ بستانکاری موکل: ").append(s.credit).append(" ریال\nقرارداد/توافق: ").append(c.contractNotes).append(" / ").append(c.agreementNotes).append("\nاقساط:\n");for(InstallmentRecord i:installments(c.id))b.append(i.dueDate).append(" | ").append(i.title).append(" | تعهد: ").append(i.amount).append(" ریال | پرداخت: ").append(i.paid).append(" ریال | مانده: ").append(i.amount-i.paid).append(" ریال\n");long planned=0,allocated=0;for(InstallmentRecord i:installments(c.id)){planned+=i.amount;allocated+=i.paid;}b.append("جمع اقساط: ").append(planned).append(" ریال | مبلغ توافقی: ").append(s.agreed).append(" ریال | دریافت خارج از اقساط: ").append(Math.max(0,s.received-allocated)).append(" ریال\nریز دریافت‌ها و مخارج:\n");
         for(LedgerRecord l:ledger(c.id))b.append(l.date).append(" | ").append("expense".equals(l.kind)?"هزینه":"دریافت").append(" | ").append(l.category).append(" | ").append(l.amount).append(" ریال | پرداخت‌کننده: ").append(l.paidBy).append(" | ").append(l.description).append("\n");b.append("\nاین صورت‌حساب پیش از امضا باید با اسناد و قرارداد پرونده تطبیق داده شود.\nنام و امضای موکل: ........................  تاریخ: .................\nنام و امضای وکیل: ........................  تاریخ: .................\n\n");return b.toString();}
 
-    String performanceText(Long caseId,Long clientId){StringBuilder b=new StringBuilder();ArrayList<Long> ids=new ArrayList<>();for(CaseRecord c:cases(null,"همه",clientId))if(caseId==null||c.id==caseId){ids.add(c.id);b.append("پرونده: ").append(c.title).append(" | شماره: ").append(c.caseNumber).append(" | موکل: ").append(c.clientName).append("\n");for(WorkLogRecord x:workLogs(c.id,null))b.append(x.date).append(" | اقدام: ").append(x.type).append(" | ").append(x.description).append("\n");for(LedgerRecord l:ledger(c.id))if("expense".equals(l.kind)&&"وکیل".equals(l.paidBy))b.append(l.date).append(" | هزینه پرداختی وکیل: ").append(l.category).append(" | ").append(l.amount).append(" ریال | ").append(l.description).append("\n");b.append("\n");}return b.toString();}
+    String performanceText(Long caseId,Long clientId){StringBuilder b=new StringBuilder();ArrayList<Long> ids=new ArrayList<>();for(CaseRecord c:cases(null,"همه",clientId))if(caseId==null||c.id==caseId){ids.add(c.id);b.append("پرونده: ").append(c.title).append(" | شماره: ").append(c.caseNumber).append(" | موکل: ").append(c.clientName).append("\n");for(WorkLogRecord x:workLogs(c.id,null))b.append(x.date).append(" | اقدام: ").append(x.type).append(" | ").append(x.description).append("\n");for(AppointmentRecord a:appointments(null))if(a.caseId==c.id)b.append(a.date).append(" | ").append(a.start).append(" تا ").append(a.end).append(" | ").append(a.kind).append(" | ").append(a.person).append(" | ").append(a.place).append("\n");for(LedgerRecord l:ledger(c.id))if("expense".equals(l.kind)&&"وکیل".equals(l.paidBy))b.append(l.date).append(" | هزینه پرداختی وکیل: ").append(l.category).append(" | ").append(l.amount).append(" ریال | ").append(l.description).append("\n");b.append("\n");}if(caseId==null&&clientId!=null)for(AppointmentRecord a:appointments(null))if(a.caseId==0&&a.clientId==clientId)b.append(a.date).append(" | ").append(a.start).append(" تا ").append(a.end).append(" | ").append(a.kind).append(" | ").append(a.person).append(" | ").append(a.place).append("\n");return b.toString();}
+
+    private static final String[] DEMO_TABLES={"clients","cases","tasks","ledger","worklogs","appointments","deadlines","installments","installment_payments","case_clients","collaborators","case_collaborators","representation_contracts","contract_clients","contract_collaborators","financial_contracts","payment_checks","case_attachments"};
+    int countDemoRows(){int total=0;for(String table:DEMO_TABLES)total+=scalar("SELECT COUNT(*) FROM "+table+" WHERE is_demo=1 AND deleted_at IS NULL",null);return total;}
+
+    /** User data may refer to a sample case. Keep that parent and its essential links
+     * instead of making real ledger entries or contracts disappear from the UI. */
+    private void preserveRealDependencies(SQLiteDatabase database){
+        java.util.Set<String> allowed=new java.util.HashSet<>(java.util.Arrays.asList(DEMO_TABLES));
+        for(int pass=0;pass<DEMO_TABLES.length;pass++){
+            int changed=0;
+            database.execSQL("UPDATE case_clients SET is_demo=0,updated_at=? WHERE is_demo=1 AND deleted_at IS NULL AND (case_id IN(SELECT id FROM cases WHERE is_demo=0 AND deleted_at IS NULL) OR client_id IN(SELECT id FROM clients WHERE is_demo=0 AND deleted_at IS NULL))",new Object[]{now()});
+            try(Cursor count=database.rawQuery("SELECT changes()",null)){if(count.moveToFirst())changed+=count.getInt(0);}
+            for(String child:DEMO_TABLES)try(Cursor keys=database.rawQuery("PRAGMA foreign_key_list("+child+")",null)){
+                while(keys.moveToNext()){
+                    String parent=keys.getString(2),column=keys.getString(3);if(!allowed.contains(parent))continue;
+                    database.execSQL("UPDATE "+parent+" SET is_demo=0,updated_at=? WHERE is_demo=1 AND deleted_at IS NULL AND id IN(SELECT "+column+" FROM "+child+" WHERE is_demo=0 AND deleted_at IS NULL)",new Object[]{now()});
+                    try(Cursor count=database.rawQuery("SELECT changes()",null)){if(count.moveToFirst())changed+=count.getInt(0);}
+                }
+            }
+            if(changed==0)break;
+        }
+    }
+    int countLegalDocuments(){return scalar("SELECT COUNT(*) FROM legal_documents WHERE deleted_at IS NULL",null);}
+    List<LegalDocumentRecord> searchLegalDocuments(String query){ArrayList<LegalDocumentRecord> out=new ArrayList<>();String q="%"+(query==null?"":query.trim())+"%";try(Cursor c=getReadableDatabase().rawQuery("SELECT id,kind,title,number,subject,body,source_url,content_version FROM legal_documents WHERE deleted_at IS NULL AND (?='%%' OR title LIKE ? OR number LIKE ? OR subject LIKE ? OR body LIKE ?) ORDER BY title LIMIT 250",new String[]{q,q,q,q,q})){while(c.moveToNext())out.add(new LegalDocumentRecord(c.getLong(0),c.getString(1),c.getString(2),c.getString(3),c.getString(4),c.getString(5),c.getString(6),c.getString(7)));}return out;}
+    void softDeleteDemoData(){SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{preserveRealDependencies(db);String t=now();ContentValues tomb=new ContentValues();tomb.put("deleted_at",t);tomb.put("updated_at",t);for(String table:new String[]{"installment_payments","contract_collaborators","contract_clients","case_collaborators","case_clients","case_attachments","payment_checks","installments","financial_contracts","representation_contracts","appointments","deadlines","tasks","ledger","worklogs","collaborators","cases","clients"})db.update(table,tomb,"is_demo=1 AND deleted_at IS NULL",null);db.setTransactionSuccessful();}finally{db.endTransaction();}}
+    List<DeletedRecord> deletedRecords(){ArrayList<DeletedRecord> out=new ArrayList<>();try(Cursor c=getReadableDatabase().rawQuery("SELECT 'case',id,title,deleted_at FROM cases WHERE deleted_at IS NOT NULL UNION ALL SELECT 'client',id,name,deleted_at FROM clients WHERE deleted_at IS NOT NULL UNION ALL SELECT 'contract',id,contract_number,deleted_at FROM representation_contracts WHERE deleted_at IS NOT NULL UNION ALL SELECT 'check',id,check_number,deleted_at FROM payment_checks WHERE deleted_at IS NOT NULL UNION ALL SELECT 'attachment',id,display_name,deleted_at FROM case_attachments WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC",null)){while(c.moveToNext())out.add(new DeletedRecord(c.getString(0),c.getLong(1),c.getString(2),c.getString(3)));}return out;}
+    void restoreCase(long id){SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{String deleted;try(Cursor c=db.rawQuery("SELECT deleted_at FROM cases WHERE id=? AND deleted_at IS NOT NULL",new String[]{String.valueOf(id)})){if(!c.moveToFirst())throw new IllegalArgumentException("پرونده حذف‌شده یافت نشد");deleted=c.getString(0);}ContentValues live=new ContentValues();live.putNull("deleted_at");live.put("updated_at",now());db.update("contract_clients",live,"contract_id IN(SELECT id FROM representation_contracts WHERE case_id=?) AND deleted_at=?",new String[]{String.valueOf(id),deleted});db.update("contract_collaborators",live,"contract_id IN(SELECT id FROM representation_contracts WHERE case_id=?) AND deleted_at=?",new String[]{String.valueOf(id),deleted});for(String table:new String[]{"tasks","ledger","worklogs","appointments","deadlines","installments","case_clients","case_collaborators","representation_contracts","financial_contracts","payment_checks","case_attachments"})db.update(table,live,"case_id=? AND deleted_at=?",new String[]{String.valueOf(id),deleted});db.update("installment_payments",live,"installment_id IN(SELECT id FROM installments WHERE case_id=?) AND deleted_at=?",new String[]{String.valueOf(id),deleted});db.update("cases",live,"id=?",new String[]{String.valueOf(id)});db.setTransactionSuccessful();}finally{db.endTransaction();}}
+    void restoreClient(long id){ContentValues live=new ContentValues();live.putNull("deleted_at");live.put("updated_at",now());if(getWritableDatabase().update("clients",live,"id=? AND deleted_at IS NOT NULL",new String[]{String.valueOf(id)})!=1)throw new IllegalArgumentException("موکل حذف‌شده یافت نشد");}
+    void restoreRecord(String type,long id){
+        if("case".equals(type)){restoreCase(id);return;}if("client".equals(type)){restoreClient(id);return;}
+        String table="contract".equals(type)?"representation_contracts":"check".equals(type)?"payment_checks":"attachment".equals(type)?"case_attachments":null;
+        if(table==null)throw new IllegalArgumentException("نوع رکورد معتبر نیست");
+        SQLiteDatabase database=getWritableDatabase();database.beginTransaction();
+        try {
+            String deleted;
+            try(Cursor c=database.rawQuery("SELECT r.deleted_at,r.case_id,c.deleted_at FROM "+table+" r LEFT JOIN cases c ON c.id=r.case_id WHERE r.id=? AND r.deleted_at IS NOT NULL",new String[]{String.valueOf(id)})){
+                if(!c.moveToFirst())throw new IllegalArgumentException("رکورد یافت نشد");
+                deleted=c.getString(0);if(!c.isNull(1)&&!c.isNull(2))throw new IllegalArgumentException("ابتدا پرونده مرتبط را بازیابی کنید");
+            }
+            ContentValues live=new ContentValues();live.putNull("deleted_at");live.put("updated_at",now());
+            database.update(table,live,"id=?",new String[]{String.valueOf(id)});
+            if("contract".equals(type))for(String link:new String[]{"contract_clients","contract_collaborators"})database.update(link,live,"contract_id=? AND deleted_at=?",new String[]{String.valueOf(id),deleted});
+            if("check".equals(type))database.update("reminders",live,"target_type='check' AND target_id=? AND deleted_at=?",new String[]{String.valueOf(id),deleted});
+            database.setTransactionSuccessful();
+        } finally {database.endTransaction();}
+    }
+    void clearAllOfficeData(){SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{for(String table:deleteOrder())db.delete(table,null,null);db.setTransactionSuccessful();}finally{db.endTransaction();}}
 
     String exportJson() throws Exception {
         JSONObject root = new JSONObject(); root.put("format", "KLO-2"); root.put("created", now());
@@ -452,17 +923,17 @@ final class OfficeDb extends SQLiteOpenHelper {
         SQLiteDatabase db = getWritableDatabase();
         db.beginTransaction();
         try {
-            db.delete("reminders",null,null);db.delete("installment_payments",null,null);db.delete("installments",null,null);
-            db.delete("worklogs", null, null); db.delete("deadlines",null,null);db.delete("appointments",null,null); db.delete("ledger", null, null); db.delete("cases", null, null);
-            db.delete("tasks", null, null); db.delete("clients", null, null);
+            for(String table:deleteOrder())db.delete(table,null,null);
             for (String table : backupTables())
                 if(tables.has(table))restore(db, table, tables.getJSONArray(table));
+            backfillCaseClients(db);
             try(Cursor check=db.rawQuery("PRAGMA foreign_key_check",null)){if(check.moveToFirst())throw new Exception("ارتباط داده‌های پشتیبان نامعتبر است");}
             db.setTransactionSuccessful();
         } finally { db.endTransaction(); }
     }
 
-    private static String[] backupTables(){return new String[]{"clients","cases","tasks","ledger","worklogs","appointments","deadlines","installments","installment_payments","reminders"};}
+    private static String[] backupTables(){return new String[]{"clients","cases","collaborators","case_clients","case_collaborators","representation_contracts","contract_clients","contract_collaborators","financial_contracts","installments","ledger","payment_checks","case_attachments","installment_payments","tasks","worklogs","appointments","deadlines","reminders","legal_taxonomy","legal_documents","legal_sync_state"};}
+    private static String[] deleteOrder(){return new String[]{"reminders","installment_payments","contract_collaborators","contract_clients","case_collaborators","case_clients","case_attachments","payment_checks","installments","financial_contracts","representation_contracts","appointments","deadlines","tasks","ledger","worklogs","collaborators","cases","clients","legal_documents","legal_taxonomy","legal_sync_state"};}
 
     private JSONArray dump(String table) throws Exception {
         JSONArray array = new JSONArray(); Cursor c = getReadableDatabase().rawQuery("SELECT * FROM " + table, null);
@@ -481,7 +952,7 @@ final class OfficeDb extends SQLiteOpenHelper {
             Iterator<String> keys = row.keys(); while (keys.hasNext()) { String key = keys.next(); Object value = row.get(key);
                 if(!allowed.contains(key))continue;
                 if (value == JSONObject.NULL) v.putNull(key); else if (value instanceof Number) v.put(key, ((Number) value).longValue()); else v.put(key, String.valueOf(value));
-            } if(!v.containsKey("uid")||v.getAsString("uid")==null)v.put("uid",UUID.randomUUID().toString());if(!v.containsKey("updated_at"))v.put("updated_at",now());db.insertOrThrow(table, null, v);
+            } if(allowed.contains("uid")&&(!v.containsKey("uid")||v.getAsString("uid")==null))v.put("uid",UUID.randomUUID().toString());if(allowed.contains("updated_at")&&!v.containsKey("updated_at"))v.put("updated_at",now());db.insertOrThrow(table, null, v);
         }
     }
 
@@ -492,13 +963,14 @@ final class OfficeDb extends SQLiteOpenHelper {
         v.put("status", c.status); v.put("category", c.category); v.put("case_number", c.caseNumber);
         v.put("archive_number", c.archiveNumber); v.put("branch", c.branch); v.put("subject", c.subject);
         v.put("claim_text", c.claimText); v.put("evidence", c.evidence); v.put("summary", c.summary);
-        v.put("financial_notes", c.financialNotes); v.put("contract_notes", c.contractNotes);v.put("contract_number",c.contractNumber);v.put("contract_date",c.contractDate);
+        v.put("financial_notes", c.financialNotes); v.put("contract_notes", c.contractNotes);v.put("contract_number",c.contractNumber);v.put("contract_date",c.contractDate);v.put("judgment_number",c.judgmentNumber);v.put("order_number",c.orderNumber);
         v.put("authority_type",c.authorityType); v.put("province",c.province); v.put("judicial_city",c.judicialCity); return v;
     }
 
-    private CaseRecord caseFrom(Cursor c) { CaseRecord r=new CaseRecord(c.getLong(0), c.getString(1), c.getString(2), c.getString(3), c.getLong(4), c.getString(5), c.getLong(6), c.getString(7), c.getString(8), c.getString(9), c.getString(10), c.getString(11), c.getString(12), c.getString(13), c.getString(14), c.getString(15), c.getString(16), c.getString(17), c.getString(18),c.getString(19),c.getString(20),c.getString(21));r.contractNumber=c.getString(22);r.contractDate=c.getString(23);return r; }
+    private CaseRecord caseFrom(Cursor c) { CaseRecord r=new CaseRecord(c.getLong(0), c.getString(1), c.getString(2), c.getString(3), c.getLong(4), c.getString(5), c.getLong(6), c.getString(7), c.getString(8), c.getString(9), c.getString(10), c.getString(11), c.getString(12), c.getString(13), c.getString(14), c.getString(15), c.getString(16), c.getString(17), c.getString(18),c.getString(19),c.getString(20),c.getString(21));r.contractNumber=c.getString(22);r.contractDate=c.getString(23);r.judgmentNumber=c.getString(24);r.orderNumber=c.getString(25);return r; }
     private TaskRecord taskFrom(Cursor c) { return new TaskRecord(c.getLong(0), c.getString(1), c.getString(2), c.getString(3), c.getString(4), c.getString(5), c.getInt(6), c.getString(7), c.getString(8),c.getString(9),c.getString(10),c.getString(11),c.getLong(12),c.getLong(13)); }
     private static String now() { SimpleDateFormat utc=new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",Locale.US);utc.setTimeZone(TimeZone.getTimeZone("UTC"));return utc.format(new Date()); }
+    private static boolean blank(String value){return value==null||value.trim().isEmpty();}
 
     static final class ClientRecord {
         final long id; final String name,nationalId,father,birth,phone,address,notes; final int caseCount,activeCount;
@@ -506,16 +978,24 @@ final class OfficeDb extends SQLiteOpenHelper {
         @Override public String toString(){return name;}
     }
     static final class CaseRecord {
-        long id,clientId,feeAgreed; String title,reference,stage,clientName,agreementNotes,status,category,caseNumber,archiveNumber,branch,subject,claimText,evidence,summary,financialNotes,contractNotes,contractNumber,contractDate,authorityType,province,judicialCity;
+        long id,clientId,feeAgreed; String title,reference,stage,clientName,agreementNotes,status,category,caseNumber,archiveNumber,branch,subject,claimText,evidence,summary,financialNotes,contractNotes,contractNumber,contractDate,judgmentNumber,orderNumber,authorityType,province,judicialCity;
         CaseRecord(){status="active";category="حقوقی";}
         CaseRecord(long id,String title,String reference,String stage,long clientId,String clientName,long fee,String agreement,String status,String category,String caseNumber,String archiveNumber,String branch,String subject,String claimText,String evidence,String summary,String financialNotes,String contractNotes,String authorityType,String province,String judicialCity){this.id=id;this.title=title;this.reference=reference;this.stage=stage;this.clientId=clientId;this.clientName=clientName;this.feeAgreed=fee;this.agreementNotes=agreement;this.status=status;this.category=category;this.caseNumber=caseNumber;this.archiveNumber=archiveNumber;this.branch=branch;this.subject=subject;this.claimText=claimText;this.evidence=evidence;this.summary=summary;this.financialNotes=financialNotes;this.contractNotes=contractNotes;this.authorityType=authorityType;this.province=province;this.judicialCity=judicialCity;}
     }
     static final class TaskRecord { final long id,caseId,clientId; final String title,caseName,date,time,priority,status,notes,kind,endTime,place; final int done; TaskRecord(long id,String title,String caseName,String date,String time,String priority,int done,String status,String notes,String kind,String endTime,String place,long caseId,long clientId){this.id=id;this.title=title;this.caseName=caseName;this.date=date;this.time=time;this.priority=priority;this.done=done;this.status=status;this.notes=notes;this.kind=kind;this.endTime=endTime;this.place=place;this.caseId=caseId;this.clientId=clientId;} }
     static final class LedgerRecord { final long id,amount; final String kind,category,date,paidBy,description; LedgerRecord(long id,String kind,String category,long amount,String date,String paidBy,String description){this.id=id;this.kind=kind;this.category=category;this.amount=amount;this.date=date;this.paidBy=paidBy;this.description=description;} }
     static final class InstallmentRecord {final long id,amount,paid;final String title,dueDate;InstallmentRecord(long id,String title,long amount,String dueDate,long paid){this.id=id;this.title=title;this.amount=amount;this.dueDate=dueDate;this.paid=paid;}}
-    static final class ReminderRecord {final long id,at;final int advanceDays;final String kind;ReminderRecord(long id,long at,int advanceDays,String kind){this.id=id;this.at=at;this.advanceDays=advanceDays;this.kind=kind;}}
+    static final class CollaboratorRecord {final long id;final String first,last,license,body,phone,notes;CollaboratorRecord(long id,String first,String last,String license,String body,String phone,String notes){this.id=id;this.first=first;this.last=last;this.license=license;this.body=body;this.phone=phone;this.notes=notes;}@Override public String toString(){return first+" "+last;}}
+    static final class CaseCollaboratorRecord {final long id,collaboratorId;final String name,license,mode,notes;final double share;CaseCollaboratorRecord(long id,long collaboratorId,String name,String license,String mode,double share,String notes){this.id=id;this.collaboratorId=collaboratorId;this.name=name;this.license=license;this.mode=mode;this.share=share;this.notes=notes;}}
+    static final class RepresentationContractRecord {final long id,fee,caseId;final String number,date,subject,scope,opponents,collaborationMode,notes;final boolean opponentsAny,delegation;RepresentationContractRecord(long id,String number,String date,String subject,String scope,long fee,boolean opponentsAny,String opponents,boolean delegation,String collaborationMode,String notes,long caseId){this.id=id;this.number=number;this.date=date;this.subject=subject;this.scope=scope;this.fee=fee;this.opponentsAny=opponentsAny;this.opponents=opponents;this.delegation=delegation;this.collaborationMode=collaborationMode;this.notes=notes;this.caseId=caseId;}}
+    static final class FinancialContractRecord {final long id,total;final String date,terms,notes;FinancialContractRecord(long id,String date,long total,String terms,String notes){this.id=id;this.date=date;this.total=total;this.terms=terms;this.notes=notes;}}
+    static final class PaymentCheckRecord {final long id,caseId,amount;final String number,dueDate,bank,branch,status,notes;PaymentCheckRecord(long id,long caseId,String number,String dueDate,long amount,String bank,String branch,String status,String notes){this.id=id;this.caseId=caseId;this.number=number;this.dueDate=dueDate;this.amount=amount;this.bank=bank;this.branch=branch;this.status=status;this.notes=notes;}}
+    static final class CaseAttachmentRecord {final long id,caseId;final String name,mime,uri,createdAt;CaseAttachmentRecord(long id,long caseId,String name,String mime,String uri,String createdAt){this.id=id;this.caseId=caseId;this.name=name;this.mime=mime;this.uri=uri;this.createdAt=createdAt;}}
+    static final class LegalDocumentRecord {final long id;final String kind,title,number,subject,body,sourceUrl,version;LegalDocumentRecord(long id,String kind,String title,String number,String subject,String body,String sourceUrl,String version){this.id=id;this.kind=kind;this.title=title;this.number=number;this.subject=subject;this.body=body;this.sourceUrl=sourceUrl;this.version=version;}}
+    static final class DeletedRecord {final String type,title,deletedAt;final long id;DeletedRecord(String type,long id,String title,String deletedAt){this.type=type;this.id=id;this.title=title;this.deletedAt=deletedAt;}}
+    static final class ReminderRecord {String label="";final long id,at;final int advanceDays;final String kind;ReminderRecord(long id,long at,int advanceDays,String kind){this.id=id;this.at=at;this.advanceDays=advanceDays;this.kind=kind;}}
     static final class AccountSummary { long agreed,received,reimbursed,expenses,lawyerPaid,debt,credit; }
     static final class WorkLogRecord { final long id,caseId,clientId; final String type,date,description,caseTitle,clientName; WorkLogRecord(long id,long caseId,long clientId,String type,String date,String description,String caseTitle,String clientName){this.id=id;this.caseId=caseId;this.clientId=clientId;this.type=type;this.date=date;this.description=description;this.caseTitle=caseTitle;this.clientName=clientName;} }
-    static final class AppointmentRecord {final long id,clientId,caseId;final String kind,person,phone,date,start,end,place,notes,caseTitle;AppointmentRecord(long id,String kind,String person,String phone,String date,String start,String end,String place,String notes,long clientId,long caseId,String caseTitle){this.id=id;this.kind=kind;this.person=person;this.phone=phone;this.date=date;this.start=start;this.end=end;this.place=place;this.notes=notes;this.clientId=clientId;this.caseId=caseId;this.caseTitle=caseTitle;}}
+    static final class AppointmentRecord {String branch="",authority="",city="",attendance="planned",completedAt="";final long id,clientId,caseId;final String kind,person,phone,date,start,end,place,notes,caseTitle;AppointmentRecord(long id,String kind,String person,String phone,String date,String start,String end,String place,String notes,long clientId,long caseId,String caseTitle){this.id=id;this.kind=kind;this.person=person;this.phone=phone;this.date=date;this.start=start;this.end=end;this.place=place;this.notes=notes;this.clientId=clientId;this.caseId=caseId;this.caseTitle=caseTitle;}}
     static final class DeadlineRecord {final long id,caseId;final String title,eventDate,dueDate,notes,caseTitle,caseNumber,clientName;final int days,completed;DeadlineRecord(long id,long caseId,String title,String eventDate,String dueDate,int days,String notes,int completed,String caseTitle,String caseNumber,String clientName){this.id=id;this.caseId=caseId;this.title=title;this.eventDate=eventDate;this.dueDate=dueDate;this.days=days;this.notes=notes;this.completed=completed;this.caseTitle=caseTitle;this.caseNumber=caseNumber;this.clientName=clientName;}}
 }

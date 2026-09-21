@@ -8,20 +8,29 @@ dependencies {
 }
 
 android {
+    buildFeatures { buildConfig true }
     namespace "ir.kamranvahdati.lawoffice"
     compileSdk 35
     defaultConfig {
         applicationId "ir.kamranvahdati.lawoffice"
         minSdk 24
         targetSdk 35
-        versionCode 9
-        versionName "0.8.1"
-        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        versionCode 11
+        versionName "0.9.1"
+        manifestPlaceholders = [appLabel: "@string/app_name"]
+        testInstrumentationRunner "ir.kamranvahdati.lawoffice.OfficeTestRunner"
     }
     buildTypes {
         release {
             minifyEnabled false
             signingConfig signingConfigs.debug
+        }
+        preview {
+            initWith release
+            applicationIdSuffix ".preview"
+            versionNameSuffix "-preview"
+            matchingFallbacks = ["release"]
+            manifestPlaceholders = [appLabel: "وکیل من — آزمایشی ۹.۱"]
         }
     }
 }
