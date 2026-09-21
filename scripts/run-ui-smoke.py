@@ -7,7 +7,7 @@ import sys
 result = subprocess.run(
     ["adb", "shell", "am", "instrument", "-w", "-r", "-e", "class",
      "ir.kamranvahdati.lawoffice.UiFlowSmokeTest",
-     "ir.kamranvahdati.lawoffice.test/androidx.test.runner.AndroidJUnitRunner"],
+     "ir.kamranvahdati.lawoffice.test/ir.kamranvahdati.lawoffice.OfficeTestRunner"],
     text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=240,
 )
 path = pathlib.Path("app/build/ui-smoke.txt")

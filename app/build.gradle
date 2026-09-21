@@ -18,7 +18,7 @@ android {
         versionCode 11
         versionName "0.9.1"
         manifestPlaceholders = [appLabel: "@string/app_name"]
-        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunner "ir.kamranvahdati.lawoffice.OfficeTestRunner"
     }
     buildTypes {
         release {
