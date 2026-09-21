@@ -75,17 +75,5 @@ public class UiFlowSmokeTest {
         File folder=new File(activity.getExternalFilesDir(null),"qa");assertTrue(folder.isDirectory()||folder.mkdirs());
         File file=new File(folder,name+"-"+bitmap[0].getWidth()+".png");
         try(FileOutputStream stream=new FileOutputStream(file)){assertTrue(bitmap[0].compress(Bitmap.CompressFormat.PNG,100,stream));}finally{bitmap[0].recycle();}
-        // Gradle may uninstall the tested package at the end of instrumentation.
-        // Copy synthetic-data screenshots before cleanup, using the test-only shell identity.
-        runShell(instrumentation,"mkdir -p /data/local/tmp/klo-qa");
-        runShell(instrumentation,"cp "+file.getAbsolutePath()+" /data/local/tmp/klo-qa/"+file.getName());
-        assertTrue("Screenshot must survive package uninstall: "+name,
-            runShell(instrumentation,"ls /data/local/tmp/klo-qa/"+file.getName()).contains(file.getName()));
-    }
-    private String runShell(Instrumentation instrumentation,String command) throws Exception {
-        try(java.io.BufferedReader reader=new java.io.BufferedReader(new java.io.InputStreamReader(
-            new android.os.ParcelFileDescriptor.AutoCloseInputStream(instrumentation.getUiAutomation().executeShellCommand(command))))){
-            StringBuilder output=new StringBuilder();String line;while((line=reader.readLine())!=null)output.append(line).append('\n');return output.toString();
-        }
     }
 }
