@@ -9,7 +9,7 @@ import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.view.View;
 import android.view.WindowInsets;
-import android.graphics.Rect;
+import android.graphics.Insets;
 import android.widget.EditText;
 
 import androidx.test.ext.junit.runners.AndroidJUnit4;
@@ -39,7 +39,7 @@ public class UiContractTest {
             assertEquals("میز کار امروز",activity.subtitle.getText().toString());
             assertTrue("product title is above desk heading",activity.title.getTop()<activity.subtitle.getTop());
             View insetTarget=new View(activity);activity.safeArea(insetTarget);
-            insetTarget.dispatchApplyWindowInsets(new WindowInsets(new Rect(31,42,27,48)));
+            insetTarget.dispatchApplyWindowInsets(new WindowInsets.Builder().setSystemWindowInsets(Insets.of(31,42,27,48)).build());
             assertEquals(31,insetTarget.getPaddingLeft());assertEquals(27,insetTarget.getPaddingRight());
             assertEquals(42+activity.dp(5),insetTarget.getPaddingTop());assertEquals(48+activity.dp(5),insetTarget.getPaddingBottom());
             EditText date=activity.input("تاریخ"),time=activity.input("ساعت");activity.bindJalaliPicker(date);activity.bindTimePicker(time);assertNotNull(date.getCompoundDrawables()[2]);assertNotNull(time.getCompoundDrawables()[2]);
