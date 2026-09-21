@@ -72,7 +72,7 @@ public class UiFlowSmokeTest {
     private void capture(Instrumentation instrumentation,MainActivity activity,String name) throws Exception {
         Bitmap[] bitmap=new Bitmap[1];
         instrumentation.runOnMainSync(()->{assertTrue(activity.root.getWidth()>0);bitmap[0]=Bitmap.createBitmap(activity.root.getWidth(),activity.root.getHeight(),Bitmap.Config.ARGB_8888);activity.root.draw(new Canvas(bitmap[0]));});
-        File folder=new File(activity.getExternalFilesDir(null),"qa");assertTrue(folder.isDirectory()||folder.mkdirs());
+        File folder=new File(activity.getFilesDir(),"qa");assertTrue(folder.isDirectory()||folder.mkdirs());
         File file=new File(folder,name+"-"+bitmap[0].getWidth()+".png");
         try(FileOutputStream stream=new FileOutputStream(file)){assertTrue(bitmap[0].compress(Bitmap.CompressFormat.PNG,100,stream));}finally{bitmap[0].recycle();}
     }

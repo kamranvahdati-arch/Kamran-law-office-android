@@ -28,7 +28,7 @@ if not passed:
 # run-as is available only for this debuggable test build; production permissions stay intact.
 archive = subprocess.run(
     ["adb", "exec-out", "run-as", "ir.kamranvahdati.lawoffice", "tar", "-C",
-     "/sdcard/Android/data/ir.kamranvahdati.lawoffice/files/qa", "-cf", "-", "."],
+     "/data/user/0/ir.kamranvahdati.lawoffice/files/qa", "-cf", "-", "."],
     stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=60, check=True,
 )
 destination = pathlib.Path("app/build/qa")
