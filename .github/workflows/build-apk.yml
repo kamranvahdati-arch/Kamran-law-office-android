@@ -65,7 +65,6 @@ jobs:
             gradle installDebug installDebugAndroidTest
             python3 scripts/run-ui-smoke.py
             adb shell wm size reset
-            adb pull /sdcard/Android/data/ir.kamranvahdati.lawoffice/files/qa app/build/qa
             adb install -r app/build/outputs/apk/preview/app-preview.apk
             adb shell am start -W -n ir.kamranvahdati.lawoffice.preview/ir.kamranvahdati.lawoffice.MainActivity
             adb shell pidof ir.kamranvahdati.lawoffice.preview
