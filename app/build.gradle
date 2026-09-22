@@ -1,5 +1,14 @@
 plugins { id "com.android.application" }
 
+def releaseStore = System.getenv("VOKANO_RELEASE_KEYSTORE")
+def releaseAlias = System.getenv("VOKANO_RELEASE_KEY_ALIAS")
+def releaseStorePassword = System.getenv("VOKANO_RELEASE_STORE_PASSWORD")
+def releaseKeyPassword = System.getenv("VOKANO_RELEASE_KEY_PASSWORD")
+def hasProductionSigning = [releaseStore, releaseAlias, releaseStorePassword, releaseKeyPassword].every { it }
+if (project.hasProperty("requireProductionSigning") && !hasProductionSigning) {
+    throw new GradleException("Production signing requires all VOKANO_RELEASE_* environment variables")
+}
+
 dependencies {
     implementation 'net.zetetic:sqlcipher-android:4.14.1@aar'
     implementation 'androidx.sqlite:sqlite:2.7.0'
@@ -8,6 +17,16 @@ dependencies {
 }
 
 android {
+    signingConfigs {
+        if (hasProductionSigning) {
+            production {
+                storeFile file(releaseStore)
+                storePassword releaseStorePassword
+                keyAlias releaseAlias
+                keyPassword releaseKeyPassword
+            }
+        }
+    }
     buildFeatures { buildConfig true }
     namespace "ir.kamranvahdati.lawoffice"
     compileSdk 35
@@ -23,7 +42,7 @@ android {
     buildTypes {
         release {
             minifyEnabled false
-            signingConfig signingConfigs.debug
+            signingConfig hasProductionSigning ? signingConfigs.production : signingConfigs.debug
         }
         preview {
             initWith release
