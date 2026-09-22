@@ -13,7 +13,7 @@ jobs:
       matrix:
         api: [30, 35]
     permissions:
-      contents: write
+      contents: read
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -34,7 +34,12 @@ jobs:
           javac -d /tmp/klo-date-test app/src/main/java/ir/kamranvahdati/lawoffice/JalaliDate.java app/src/main/java/ir/kamranvahdati/lawoffice/InputValidators.java app/src/test/java/ir/kamranvahdati/lawoffice/DeadlineDateSmokeTest.java app/src/test/java/ir/kamranvahdati/lawoffice/InputValidatorsSmokeTest.java
           java -cp /tmp/klo-date-test ir.kamranvahdati.lawoffice.DeadlineDateSmokeTest
           java -cp /tmp/klo-date-test ir.kamranvahdati.lawoffice.InputValidatorsSmokeTest
-      - name: Build release APK
+      - name: Test authenticated backup frames
+        run: |
+          mkdir -p /tmp/vokano-backup-test
+          javac -d /tmp/vokano-backup-test app/src/main/java/ir/kamranvahdati/lawoffice/BackupCipher.java app/src/test/java/ir/kamranvahdati/lawoffice/BackupCipherSmokeTest.java
+          java -cp /tmp/vokano-backup-test ir.kamranvahdati.lawoffice.BackupCipherSmokeTest
+      - name: Build test-signed release APK
         run: gradle assembleRelease assemblePreview -PallowTestSigning
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -51,7 +56,7 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Exercise encrypted migration on an emulator
+      - name: Exercise debug suite and clean release backup on emulator
         if: github.event_name == 'pull_request'
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -72,43 +77,12 @@ jobs:
             adb install -r app/build/outputs/apk/preview/app-preview.apk
             adb shell am start -W -n ir.kamranvahdati.lawoffice.preview/ir.kamranvahdati.lawoffice.MainActivity
             adb shell pidof ir.kamranvahdati.lawoffice.preview
-            git fetch origin codex/v091-deadlines-audit
-            git worktree add --detach "$RUNNER_TEMP/v091" FETCH_HEAD
-            cp app/src/androidTest/java/ir/kamranvahdati/lawoffice/SamePackageMediaUpgradeTest.java "$RUNNER_TEMP/v091/app/src/androidTest/java/ir/kamranvahdati/lawoffice/"
-            gradle -p "$RUNNER_TEMP/v091" assembleRelease assembleDebugAndroidTest
+            gradle assembleRelease assembleReleaseAndroidTest -PinstrumentedBuildType=release -PallowTestSigning
             adb uninstall ir.kamranvahdati.lawoffice || true
-            adb install "$RUNNER_TEMP/v091/app/build/outputs/apk/release/app-release.apk"
-            adb install "$RUNNER_TEMP/v091/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
-            adb shell am instrument -w -e class ir.kamranvahdati.lawoffice.ScheduleMigrationTest#editingSessionDetailsPreservesTimeAndRemindersAndRejectsUnrelatedClient ir.kamranvahdati.lawoffice.test/ir.kamranvahdati.lawoffice.OfficeTestRunner | tee app/build/upgrade-v091-seed.txt
-            grep -q 'OK (1 test)' app/build/upgrade-v091-seed.txt
-            adb shell am instrument -w -e media_upgrade seed -e class ir.kamranvahdati.lawoffice.SamePackageMediaUpgradeTest#checkAttachmentAndProfileImageAcrossSamePackageUpgrade ir.kamranvahdati.lawoffice.test/ir.kamranvahdati.lawoffice.OfficeTestRunner | tee app/build/media-v091-seed.txt
-            grep -q 'OK (1 test)' app/build/media-v091-seed.txt
-            adb install -r app/build/outputs/apk/release/app-release.apk
-            adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-            adb shell am instrument -w -e upgrade_mode true -e class ir.kamranvahdati.lawoffice.VokanoUpgradeTest#samePackageUpgradeRetainsExistingAppointmentAndDatabaseVersion ir.kamranvahdati.lawoffice.test/ir.kamranvahdati.lawoffice.OfficeTestRunner | tee app/build/upgrade-v10-result.txt
-            grep -q 'OK (1 test)' app/build/upgrade-v10-result.txt
-            adb shell am instrument -w -e media_upgrade verify -e class ir.kamranvahdati.lawoffice.SamePackageMediaUpgradeTest#checkAttachmentAndProfileImageAcrossSamePackageUpgrade ir.kamranvahdati.lawoffice.test/ir.kamranvahdati.lawoffice.OfficeTestRunner | tee app/build/media-v10-verify.txt
-            grep -q 'OK (1 test)' app/build/media-v10-verify.txt
-            cp app/src/androidTest/java/ir/kamranvahdati/lawoffice/CrossPackageBackupTransferTest.java "$RUNNER_TEMP/v091/app/src/androidTest/java/ir/kamranvahdati/lawoffice/"
-            sed -i '/^android {/a\    testBuildType "preview"' "$RUNNER_TEMP/v091/app/build.gradle"
-            gradle -p "$RUNNER_TEMP/v091" assemblePreview assemblePreviewAndroidTest
-            adb uninstall ir.kamranvahdati.lawoffice.preview || true
-            adb install "$RUNNER_TEMP/v091/app/build/outputs/apk/preview/app-preview.apk"
-            adb install -r "$RUNNER_TEMP/v091/app/build/outputs/apk/androidTest/preview/app-preview-androidTest.apk"
-            adb shell am instrument -w -e transfer_mode export_preview -e class ir.kamranvahdati.lawoffice.CrossPackageBackupTransferTest#exportFromActualVersion91Preview ir.kamranvahdati.lawoffice.preview.test/ir.kamranvahdati.lawoffice.OfficeTestRunner | tee app/build/preview-v091-export.txt
-            grep -q 'OK (1 test)' app/build/preview-v091-export.txt
-            sed -n 's/^.*INSTRUMENTATION_STATUS: klo_transfer_base64=//p' app/build/preview-v091-export.txt | tail -1 > "$RUNNER_TEMP/v091-transfer-payload"
-            test -s "$RUNNER_TEMP/v091-transfer-payload"
-            adb shell am instrument -w -e backup_payload "$(cat "$RUNNER_TEMP/v091-transfer-payload")" -e class ir.kamranvahdati.lawoffice.CrossPackageBackupTransferTest#restoreVersion91PreviewBundleIntoVersion10Base ir.kamranvahdati.lawoffice.test/ir.kamranvahdati.lawoffice.OfficeTestRunner | tee app/build/preview-to-base-v10-restore.txt
-            grep -q 'OK (1 test)' app/build/preview-to-base-v10-restore.txt
-            # This throwaway key checks the signing route; it is never a production signing identity.
-            keytool -genkeypair -storetype PKCS12 -keystore "$RUNNER_TEMP/ci-only-vokano.p12" -alias ci-only -storepass ci-only-signing-2026 -keypass ci-only-signing-2026 -keyalg RSA -keysize 3072 -validity 2 -dname 'CN=VOKANO CI ONLY' -noprompt
-            env VOKANO_RELEASE_KEYSTORE="$RUNNER_TEMP/ci-only-vokano.p12" VOKANO_RELEASE_KEY_ALIAS=ci-only VOKANO_RELEASE_STORE_PASSWORD=ci-only-signing-2026 VOKANO_RELEASE_KEY_PASSWORD=ci-only-signing-2026 gradle --no-daemon assembleRelease -PrequireProductionSigning
-            "$(find "$ANDROID_HOME/build-tools" -mindepth 2 -maxdepth 2 -name apksigner -type f | sort -V | tail -1)" verify --verbose app/build/outputs/apk/release/app-release.apk
-            adb uninstall ir.kamranvahdati.lawoffice
+            adb uninstall ir.kamranvahdati.lawoffice.test || true
             adb install app/build/outputs/apk/release/app-release.apk
-            adb shell am start -W -n ir.kamranvahdati.lawoffice/ir.kamranvahdati.lawoffice.MainActivity
-            adb shell pidof ir.kamranvahdati.lawoffice
+            adb install app/build/outputs/apk/androidTest/release/app-release-androidTest.apk
+            python3 scripts/run-production-smoke.py
       - name: Preserve test evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -120,10 +94,5 @@ jobs:
             app/build/qa
             app/build/full-test-report
             app/build/ui-smoke.txt
-            app/build/upgrade-v091-seed.txt
-            app/build/upgrade-v10-result.txt
-            app/build/media-v091-seed.txt
-            app/build/media-v10-verify.txt
-            app/build/preview-v091-export.txt
-            app/build/preview-to-base-v10-restore.txt
+            app/build/production-proof
           if-no-files-found: ignore

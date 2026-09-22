@@ -65,7 +65,7 @@ final class OfficeDb extends SQLiteOpenHelper {
         migrateV11(db);
         migrateV12(db);
         migrateV13(db);
-        seed(db);
+        if (BuildConfig.DEBUG) seed(db);
     }
 
     @Override public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
