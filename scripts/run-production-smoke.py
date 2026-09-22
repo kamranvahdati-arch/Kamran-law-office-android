@@ -39,15 +39,26 @@ def test(name, classes, phase=None):
 adb('shell', 'am', 'start', '-W', '-n', PACKAGE + '/' + PACKAGE + '.MainActivity')
 adb('shell', 'pidof', PACKAGE)
 adb('shell', 'am', 'force-stop', PACKAGE)
+# Avoid finishing/starting the same Activity while its previous window exit
+# animation is still running. This is emulator setup, not a production setting.
+for scale in ['window_animation_scale', 'transition_animation_scale', 'animator_duration_scale']:
+    adb('shell', 'settings', 'put', 'global', scale, '0')
 test('01-empty-release-and-backup', PACKAGE + '.ProductionBaselineTest', 'seed')
 external = '/sdcard/Android/data/' + PACKAGE + '/files/production-proof'
 host_files(('pull', external + '/full.klo', str(ROOT / 'full.klo')),
            ('pull', external + '/expected.json', str(ROOT / 'expected.json')))
 adb('shell', 'pm', 'clear', PACKAGE)
 # Both private DB/key/media and app external storage were deleted by the OS.
+uid_output = adb('shell', 'cmd', 'package', 'list', 'packages', '-U', PACKAGE,
+                 text=True, stdout=subprocess.PIPE).stdout
+app_uid = re.search(r'package:' + re.escape(PACKAGE) + r' uid:(\d+)\b', uid_output).group(1)
 host_files(('shell', 'mkdir', '-p', external),
            ('push', str(ROOT / 'full.klo'), external + '/full.klo'),
-           ('push', str(ROOT / 'expected.json'), external + '/expected.json'))
+           ('push', str(ROOT / 'expected.json'), external + '/expected.json'),
+           # On Android 11, root-created external directories need the app UID
+           # on the backing files, otherwise the non-root app cannot read them.
+           ('shell', 'chown', '-R', app_uid + ':' + app_uid, '/data/media/0/Android/data/' + PACKAGE),
+           ('shell', 'restorecon', '-RF', '/data/media/0/Android/data/' + PACKAGE))
 test('02-restore-after-reset', PACKAGE + '.ProductionBaselineTest', 'restore')
 adb('shell', 'wm', 'size', '720x1280')
 for index, name in enumerate(['VokanoDashboardTest','UiContractTest','UiFlowSmokeTest','ThemeAndProfileAssetsTest'], 3):
