@@ -422,11 +422,9 @@ public class MainActivity extends Activity {
       }else if(req==IMPORT){
         importBundle(SecureBackup.decrypt(readAll(uri),pendingCode));ReminderReceiver.schedule(this);
         int missing=missingMediaCount();
-        if(missing>0)new AlertDialog.Builder(this).setTitle("تکمیل انتقال فایل‌ها")
-          .setMessage(missing+" عکس یا پیوست در نسخهٔ ۱۰ قابل باز شدن نیست. نسخهٔ ۹.۱ را نگه دارید و در پروندهٔ مربوط، همان فایل اصلی را دوباره انتخاب کنید. تا زمانی که همهٔ فایل‌ها قابل باز شدن نشده‌اند انتقال کامل نیست.")
-          .setPositiveButton("متوجه شدم",null).show();
-        else toast("اطلاعات و فایل‌های قابل دسترسی بازیابی شدند");
-        dashboard();
+        new AlertDialog.Builder(this).setTitle("بررسی رسانه‌های انتقال‌یافته")
+          .setMessage(missing+" پیوست یا عکس ثبت‌شده در نسخهٔ ۱۰ قابل باز شدن نیست. بکاپ ۹.۱ عکس پروفایل را هم منتقل نمی‌کرد. فایل اصلی هر پیوست ناموجود و عکس پروفایل را دوباره انتخاب کنید؛ تا بررسی بازشدن همهٔ فایل‌ها، نسخهٔ ۹.۱ را حذف نکنید.")
+          .setPositiveButton("ورود و بررسی",(d,w)->recreate()).show();
       }
     }catch(Exception e){new AlertDialog.Builder(this).setTitle("عملیات انجام نشد")
       .setMessage((req==ATTACH||req==RELINK?"کپی پیوست انجام نشد و رکورد قبلی محفوظ است.":"فایل معتبر نیست یا عملیات کامل نشد.")+"\n\n"+e.getClass().getSimpleName())

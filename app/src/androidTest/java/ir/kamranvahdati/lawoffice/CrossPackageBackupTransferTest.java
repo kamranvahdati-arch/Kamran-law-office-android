@@ -4,6 +4,7 @@ import static org.junit.Assert.*;
 import static org.junit.Assume.assumeTrue;
 
 import android.app.Instrumentation;
+import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -13,7 +14,7 @@ import android.net.Uri;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
-import java.lang.reflect.Method;
+import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 
 import androidx.test.ext.junit.runners.AndroidJUnit4;
@@ -98,11 +99,14 @@ public class CrossPackageBackupTransferTest {
             // Simulate the user granting the same original document again via the system picker.
             File selected=new File(context.getCacheDir(),"selected-case-91.pdf");
             try(FileOutputStream out=new FileOutputStream(selected)){out.write(PDF);}
-            Class<?> storage=Class.forName("ir.kamranvahdati.lawoffice.MediaStorage");
-            Method copy=storage.getDeclaredMethod("copy",Context.class,Uri.class);copy.setAccessible(true);
-            Uri stored=(Uri)copy.invoke(null,context,Uri.fromFile(selected));
-            Method update=OfficeDb.class.getDeclaredMethod("updateCaseAttachmentUri",long.class,String.class);
-            update.setAccessible(true);update.invoke(activity.db,attachment.id,stored.toString());
+            Field caseField=MainActivity.class.getDeclaredField("pendingAttachmentCaseId");
+            Field idField=MainActivity.class.getDeclaredField("pendingAttachmentId");
+            caseField.setAccessible(true);idField.setAccessible(true);
+            caseField.set(activity,restored.id);idField.set(activity,attachment.id);
+            instrument.runOnMainSync(()->activity.onActivityResult(75,Activity.RESULT_OK,
+                    new Intent().setData(Uri.fromFile(selected))));
+            instrument.waitForIdleSync();
+            Uri stored=Uri.parse(activity.db.caseAttachments(restored.id).get(0).uri);
             assertTrue(selected.delete());
             byte[] result=new byte[PDF.length];
             try(InputStream in=context.getContentResolver().openInputStream(stored)){
