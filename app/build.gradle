@@ -8,6 +8,12 @@ def hasProductionSigning = [releaseStore, releaseAlias, releaseStorePassword, re
 if (project.hasProperty("requireProductionSigning") && !hasProductionSigning) {
     throw new GradleException("Production signing requires all VOKANO_RELEASE_* environment variables")
 }
+gradle.taskGraph.whenReady { graph ->
+    if (!hasProductionSigning && !project.hasProperty("allowTestSigning") &&
+            graph.allTasks.any { it.project == project && it.name in ["packageRelease", "packagePreview"] }) {
+        throw new GradleException("No stable release key: pass -PallowTestSigning only for a TEST artifact")
+    }
+}
 
 dependencies {
     implementation 'net.zetetic:sqlcipher-android:4.14.1@aar'

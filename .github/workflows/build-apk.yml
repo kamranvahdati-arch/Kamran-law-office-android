@@ -35,7 +35,7 @@ jobs:
           java -cp /tmp/klo-date-test ir.kamranvahdati.lawoffice.DeadlineDateSmokeTest
           java -cp /tmp/klo-date-test ir.kamranvahdati.lawoffice.InputValidatorsSmokeTest
       - name: Build release APK
-        run: gradle assembleRelease assemblePreview
+        run: gradle assembleRelease assemblePreview -PallowTestSigning
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
@@ -74,16 +74,21 @@ jobs:
             adb shell pidof ir.kamranvahdati.lawoffice.preview
             git fetch origin codex/v091-deadlines-audit
             git worktree add --detach "$RUNNER_TEMP/v091" FETCH_HEAD
+            cp app/src/androidTest/java/ir/kamranvahdati/lawoffice/SamePackageMediaUpgradeTest.java "$RUNNER_TEMP/v091/app/src/androidTest/java/ir/kamranvahdati/lawoffice/"
             gradle -p "$RUNNER_TEMP/v091" assembleRelease assembleDebugAndroidTest
             adb uninstall ir.kamranvahdati.lawoffice || true
             adb install "$RUNNER_TEMP/v091/app/build/outputs/apk/release/app-release.apk"
             adb install "$RUNNER_TEMP/v091/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
             adb shell am instrument -w -e class ir.kamranvahdati.lawoffice.ScheduleMigrationTest#editingSessionDetailsPreservesTimeAndRemindersAndRejectsUnrelatedClient ir.kamranvahdati.lawoffice.test/ir.kamranvahdati.lawoffice.OfficeTestRunner | tee app/build/upgrade-v091-seed.txt
             grep -q 'OK (1 test)' app/build/upgrade-v091-seed.txt
+            adb shell am instrument -w -e media_upgrade seed -e class ir.kamranvahdati.lawoffice.SamePackageMediaUpgradeTest#checkAttachmentAndProfileImageAcrossSamePackageUpgrade ir.kamranvahdati.lawoffice.test/ir.kamranvahdati.lawoffice.OfficeTestRunner | tee app/build/media-v091-seed.txt
+            grep -q 'OK (1 test)' app/build/media-v091-seed.txt
             adb install -r app/build/outputs/apk/release/app-release.apk
             adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             adb shell am instrument -w -e upgrade_mode true -e class ir.kamranvahdati.lawoffice.VokanoUpgradeTest#samePackageUpgradeRetainsExistingAppointmentAndDatabaseVersion ir.kamranvahdati.lawoffice.test/ir.kamranvahdati.lawoffice.OfficeTestRunner | tee app/build/upgrade-v10-result.txt
             grep -q 'OK (1 test)' app/build/upgrade-v10-result.txt
+            adb shell am instrument -w -e media_upgrade verify -e class ir.kamranvahdati.lawoffice.SamePackageMediaUpgradeTest#checkAttachmentAndProfileImageAcrossSamePackageUpgrade ir.kamranvahdati.lawoffice.test/ir.kamranvahdati.lawoffice.OfficeTestRunner | tee app/build/media-v10-verify.txt
+            grep -q 'OK (1 test)' app/build/media-v10-verify.txt
             cp app/src/androidTest/java/ir/kamranvahdati/lawoffice/CrossPackageBackupTransferTest.java "$RUNNER_TEMP/v091/app/src/androidTest/java/ir/kamranvahdati/lawoffice/"
             sed -i '/^android {/a\    testBuildType "preview"' "$RUNNER_TEMP/v091/app/build.gradle"
             gradle -p "$RUNNER_TEMP/v091" assemblePreview assemblePreviewAndroidTest
@@ -117,6 +122,8 @@ jobs:
             app/build/ui-smoke.txt
             app/build/upgrade-v091-seed.txt
             app/build/upgrade-v10-result.txt
+            app/build/media-v091-seed.txt
+            app/build/media-v10-verify.txt
             app/build/preview-v091-export.txt
             app/build/preview-to-base-v10-restore.txt
           if-no-files-found: ignore

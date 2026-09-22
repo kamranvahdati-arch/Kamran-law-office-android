@@ -489,6 +489,7 @@ final class OfficeDb extends SQLiteOpenHelper {
     long addCaseAttachment(long caseId,String name,String mime,String uri){if(blank(name)||blank(uri))throw new IllegalArgumentException("فایل معتبر نیست");ContentValues v=new ContentValues();identity(v);v.put("case_id",caseId);v.put("display_name",name);v.put("mime_type",blank(mime)?"application/octet-stream":mime);v.put("content_uri",uri);return getWritableDatabase().insertOrThrow("case_attachments",null,v);}
     List<CaseAttachmentRecord> caseAttachments(long caseId){ArrayList<CaseAttachmentRecord> out=new ArrayList<>();try(Cursor c=getReadableDatabase().rawQuery("SELECT id,case_id,display_name,mime_type,content_uri,created_at FROM case_attachments WHERE case_id=? AND deleted_at IS NULL ORDER BY id DESC",new String[]{String.valueOf(caseId)})){while(c.moveToNext())out.add(new CaseAttachmentRecord(c.getLong(0),c.getLong(1),c.getString(2),c.getString(3),c.getString(4),c.getString(5)));}return out;}
     void deleteCaseAttachment(long id){softDelete("case_attachments",id);}
+    void updateCaseAttachmentUri(long id,String uri){if(blank(uri))throw new IllegalArgumentException("فایل معتبر نیست");ContentValues v=new ContentValues();v.put("content_uri",uri);v.put("updated_at",now());if(getWritableDatabase().update("case_attachments",v,"id=?",new String[]{String.valueOf(id)})!=1)throw new IllegalArgumentException("پیوست پیدا نشد");}
 
     void addTask(String title, String caseName, String date, String time,
                  String priority, String notes) {

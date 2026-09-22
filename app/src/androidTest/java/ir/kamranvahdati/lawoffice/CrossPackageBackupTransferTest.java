@@ -9,6 +9,12 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.util.Base64;
+import android.net.Uri;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
 
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
@@ -23,6 +29,7 @@ public class CrossPackageBackupTransferTest {
     private static final String CLIENT = "موکل انتقال آزمایشی";
     private static final String CASE = "پرونده انتقال میان دو بسته";
     private static final String DEADLINE = "مهلت انتقال آزمایشی";
+    private static final byte[] PDF = "%PDF-1.4\nVOKANO-91-MEDIA\n%%EOF".getBytes(StandardCharsets.UTF_8);
 
     @Test public void exportFromActualVersion91Preview() throws Exception {
         assumeTrue("Run only with the installed v9.1 preview APK",
@@ -44,6 +51,9 @@ public class CrossPackageBackupTransferTest {
             OfficeDb.CaseRecord record=new OfficeDb.CaseRecord();
             record.title=CASE;record.clientId=client;record.category="حقوقی";record.status="active";
             long caseId=db.addCase(record);
+            File oldMedia=new File(context.getFilesDir(),"case-91.pdf");
+            try(FileOutputStream out=new FileOutputStream(oldMedia)){out.write(PDF);}
+            db.addCaseAttachment(caseId,"case-91.pdf","application/pdf",Uri.fromFile(oldMedia).toString());
             String today=JalaliDate.today().value(),due=JalaliDate.addDays(today,3);
             db.saveDeadline(caseId,client,DEADLINE,today,due,3,"داده ساختگی");
             assertEquals(1,db.countClients());
@@ -80,9 +90,35 @@ public class CrossPackageBackupTransferTest {
             assertEquals(CASE,restored.title);
             assertEquals(1,activity.db.deadlines(restored.id,false).size());
             assertEquals(DEADLINE,activity.db.deadlines(restored.id,false).get(0).title);
+            OfficeDb.CaseAttachmentRecord attachment=activity.db.caseAttachments(restored.id).get(0);
+            assertEquals("case-91.pdf",attachment.name);
+            // The old backup contains only a URI owned by the old app, never the media bytes.
+            assertFalse("Old package-private file unexpectedly became available to the new UID",
+                    canRead(context,Uri.parse(attachment.uri)));
+            // Simulate the user granting the same original document again via the system picker.
+            File selected=new File(context.getCacheDir(),"selected-case-91.pdf");
+            try(FileOutputStream out=new FileOutputStream(selected)){out.write(PDF);}
+            Class<?> storage=Class.forName("ir.kamranvahdati.lawoffice.MediaStorage");
+            Method copy=storage.getDeclaredMethod("copy",Context.class,Uri.class);copy.setAccessible(true);
+            Uri stored=(Uri)copy.invoke(null,context,Uri.fromFile(selected));
+            Method update=OfficeDb.class.getDeclaredMethod("updateCaseAttachmentUri",long.class,String.class);
+            update.setAccessible(true);update.invoke(activity.db,attachment.id,stored.toString());
+            assertTrue(selected.delete());
+            byte[] result=new byte[PDF.length];
+            try(InputStream in=context.getContentResolver().openInputStream(stored)){
+                assertNotNull(in);int n=0,k;while(n<result.length&&(k=in.read(result,n,result.length-n))!=-1)n+=k;
+                assertEquals(PDF.length,n);assertEquals(-1,in.read());
+            }
+            assertArrayEquals("The private copy must remain open after the selected source disappears",PDF,result);
+            assertEquals(stored.toString(),activity.db.caseAttachments(restored.id).get(0).uri);
             assertEquals("وکیل انتقال آزمایشی",activity.prefs.getString("name",""));
             assertTrue("The restored lawyer profile must be usable",activity.profileReady());
         } finally {finish(instrument,activity);}
+    }
+
+    private static boolean canRead(Context context,Uri uri) {
+        try(InputStream in=context.getContentResolver().openInputStream(uri)){return in!=null&&in.read()!=-1;}
+        catch(Exception e){return false;}
     }
 
     private static MainActivity start(Instrumentation instrument,Context context) {
