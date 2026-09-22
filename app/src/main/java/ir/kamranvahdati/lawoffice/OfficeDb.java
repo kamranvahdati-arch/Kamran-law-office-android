@@ -950,11 +950,13 @@ final class OfficeDb extends SQLiteOpenHelper {
     void clearAllOfficeData(){SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{for(String table:deleteOrder())db.delete(table,null,null);db.setTransactionSuccessful();}finally{db.endTransaction();}}
 
     String exportJson() throws Exception {
-        JSONObject root = new JSONObject(); root.put("format", "KLO-2"); root.put("created", now());
-        JSONObject tables = new JSONObject();
-        for (String table : backupTables())
-            tables.put(table, dump(table));
-        root.put("tables", tables); return root.toString();
+        SQLiteDatabase snapshot=getWritableDatabase();snapshot.beginTransaction();
+        try {
+            JSONObject root = new JSONObject(); root.put("format", "KLO-2"); root.put("created", now());
+            JSONObject tables = new JSONObject();
+            for (String table : backupTables()) tables.put(table, dump(table));
+            root.put("tables", tables);snapshot.setTransactionSuccessful();return root.toString();
+        } finally {snapshot.endTransaction();}
     }
 
     void importJson(String json) throws Exception {

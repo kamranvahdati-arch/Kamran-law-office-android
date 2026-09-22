@@ -48,9 +48,9 @@ public class ProductionBaselineTest {
     Uri photoUri=MediaStorage.copy(c,Uri.fromFile(photo));photo.delete();
     a.prefs.edit().putString("photo",photoUri.toString()).putString("name","وکیل آزمون").putString("professional_body","کانون وکلای دادگستری").putString("province","تهران").putString("city","تهران").putString("national_id","0013540831").putString("phone","09120000001").putBoolean("profile_complete",true).putBoolean("notification_permission_prompted",true).commit();
     a.db.addCaseAttachment(caseId,"image.png","image/png",photoUri.toString());
-    File pdf=new File(c.getCacheDir(),"fixture.pdf");try(PdfDocument document=new PdfDocument()){
+    File pdf=new File(c.getCacheDir(),"fixture.pdf");PdfDocument document=new PdfDocument();try{
      PdfDocument.Page page=document.startPage(new PdfDocument.PageInfo.Builder(300,400,1).create());page.getCanvas().drawText("VOKANO backup test",20,40,new Paint());document.finishPage(page);try(OutputStream out=new FileOutputStream(pdf)){document.writeTo(out);}
-    }
+    }finally{document.close();}
     Uri pdfUri=MediaStorage.copy(c,Uri.fromFile(pdf));pdf.delete();a.db.addCaseAttachment(caseId,"document.pdf","application/pdf",pdfUri.toString());
     File big=new File(c.getCacheDir(),"fixture-large.bin");Random random=new Random(310);try(OutputStream out=new FileOutputStream(big)){byte[] block=new byte[32768];for(int i=0;i<896;i++){random.nextBytes(block);out.write(block);}}
     Uri large=MediaStorage.copy(c,Uri.fromFile(big));big.delete();a.db.addCaseAttachment(caseId,"large.bin","application/octet-stream",large.toString());
