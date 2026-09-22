@@ -31,6 +31,7 @@ public class CrossPackageBackupTransferTest {
     private static final String CASE = "پرونده انتقال میان دو بسته";
     private static final String DEADLINE = "مهلت انتقال آزمایشی";
     private static final byte[] PDF = "%PDF-1.4\nVOKANO-91-MEDIA\n%%EOF".getBytes(StandardCharsets.UTF_8);
+    private static final byte[] PHOTO_BYTES = Base64.decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO5/q7cAAAAASUVORK5CYII=",Base64.DEFAULT);
 
     @Test public void exportFromActualVersion91Preview() throws Exception {
         assumeTrue("Run only with the installed v9.1 preview APK",
@@ -55,6 +56,9 @@ public class CrossPackageBackupTransferTest {
             File oldMedia=new File(context.getFilesDir(),"case-91.pdf");
             try(FileOutputStream out=new FileOutputStream(oldMedia)){out.write(PDF);}
             db.addCaseAttachment(caseId,"case-91.pdf","application/pdf",Uri.fromFile(oldMedia).toString());
+            File oldPhoto=new File(context.getFilesDir(),"lawyer-91.png");
+            try(FileOutputStream out=new FileOutputStream(oldPhoto)){out.write(PHOTO_BYTES);}
+            prefs.edit().putString("photo",Uri.fromFile(oldPhoto).toString()).commit();
             String today=JalaliDate.today().value(),due=JalaliDate.addDays(today,3);
             db.saveDeadline(caseId,client,DEADLINE,today,due,3,"داده ساختگی");
             assertEquals(1,db.countClients());
@@ -80,7 +84,8 @@ public class CrossPackageBackupTransferTest {
         try {SecureBackup.decrypt(encrypted,"wrong-code");fail("Wrong backup code was accepted");}
         catch(javax.crypto.AEADBadTagException expected) { /* Authentication must fail before import. */ }
         context.getSharedPreferences("office_profile",Context.MODE_PRIVATE).edit()
-                .putBoolean("lock_enabled",false).putBoolean("profile_complete",true).commit();
+                .putBoolean("lock_enabled",false).putBoolean("profile_complete",true)
+                .remove("photo").commit();
         MainActivity activity=start(instrument,context);
         try {
             activity.importBundle(SecureBackup.decrypt(encrypted,CODE));
@@ -116,6 +121,19 @@ public class CrossPackageBackupTransferTest {
             assertArrayEquals("The private copy must remain open after the selected source disappears",PDF,result);
             assertEquals(stored.toString(),activity.db.caseAttachments(restored.id).get(0).uri);
             assertEquals("وکیل انتقال آزمایشی",activity.prefs.getString("name",""));
+            assertEquals("The 9.1 backup has no lawyer photo bytes or URI","",activity.prefs.getString("photo",""));
+            File selectedPhoto=new File(context.getCacheDir(),"selected-lawyer-91.png");
+            try(FileOutputStream out=new FileOutputStream(selectedPhoto)){out.write(PHOTO_BYTES);}
+            instrument.runOnMainSync(()->activity.onActivityResult(70,Activity.RESULT_OK,
+                    new Intent().setData(Uri.fromFile(selectedPhoto))));
+            instrument.waitForIdleSync();
+            assertTrue(selectedPhoto.delete());
+            byte[] photo=new byte[PHOTO_BYTES.length];
+            try(InputStream in=context.getContentResolver().openInputStream(Uri.parse(activity.prefs.getString("photo","")))){
+                assertNotNull(in);int n=0,k;while(n<photo.length&&(k=in.read(photo,n,photo.length-n))!=-1)n+=k;
+                assertEquals(PHOTO_BYTES.length,n);
+            }
+            assertArrayEquals(PHOTO_BYTES,photo);
             assertTrue("The restored lawyer profile must be usable",activity.profileReady());
         } finally {finish(instrument,activity);}
     }
