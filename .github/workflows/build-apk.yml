@@ -89,7 +89,8 @@ jobs:
             gradle -p "$RUNNER_TEMP/v091" assemblePreview assemblePreviewAndroidTest
             adb uninstall ir.kamranvahdati.lawoffice.preview || true
             adb install "$RUNNER_TEMP/v091/app/build/outputs/apk/preview/app-preview.apk"
-            old_test_apk=$(find "$RUNNER_TEMP/v091/app/build/outputs/apk/androidTest" -name '*-androidTest.apk' -print -quit)
+            find "$RUNNER_TEMP/v091/app/build/outputs" -type f -name '*.apk' -print
+            old_test_apk=$(find "$RUNNER_TEMP/v091/app/build/outputs" -type f -name '*androidTest*.apk' -print -quit)
             test -n "$old_test_apk"
             adb install -r "$old_test_apk"
             adb shell am instrument -w -e transfer_mode export_preview -e class ir.kamranvahdati.lawoffice.CrossPackageBackupTransferTest#exportFromActualVersion91Preview ir.kamranvahdati.lawoffice.preview.test/ir.kamranvahdati.lawoffice.OfficeTestRunner | tee app/build/preview-v091-export.txt
