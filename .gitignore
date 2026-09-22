@@ -14,3 +14,9 @@ local.properties
 keystore.properties
 signing.properties
 private-signing/
+
+__pycache__/
+*.pyc
+*private*.pem
+*signing-credentials*
+*recovery-access*

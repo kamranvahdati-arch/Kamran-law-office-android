@@ -1,0 +1,33 @@
+name: VOKANO release with existing permanent key
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: vokano-release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Build with existing signing identity from secure storage
+        env:
+          VOKANO_RELEASE_KEYSTORE_BASE64: ${{ secrets.VOKANO_RELEASE_KEYSTORE_BASE64 }}
+          VOKANO_RELEASE_KEY_ALIAS: ${{ secrets.VOKANO_RELEASE_KEY_ALIAS }}
+          VOKANO_RELEASE_STORE_PASSWORD: ${{ secrets.VOKANO_RELEASE_STORE_PASSWORD }}
+          VOKANO_RELEASE_KEY_PASSWORD: ${{ secrets.VOKANO_RELEASE_KEY_PASSWORD }}
+          VOKANO_RELEASE_CERT_SHA256: ${{ secrets.VOKANO_RELEASE_CERT_SHA256 }}
+        run: python3 scripts/release-existing-key.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VOKANO-permanent-release-candidate
+          path: |
+            app/build/outputs/apk/release/app-release.apk
+            app/build/outputs/apk/androidTest/release/app-release-androidTest.apk
+          if-no-files-found: error
