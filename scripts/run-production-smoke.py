@@ -26,6 +26,7 @@ def test(name, classes, phase=None):
     # Each invocation starts a fresh process; finished Activity instances and
     # pending window transitions from other test classes must not be reused.
     adb('shell', 'am', 'force-stop', PACKAGE)
+    adb('logcat', '-c')
     args = ['shell', 'am', 'instrument', '-w', '-r', '-e', 'class', classes]
     if phase:
         args += ['-e', 'production_mode', phase]
@@ -34,6 +35,11 @@ def test(name, classes, phase=None):
     (ROOT / (name + '.txt')).write_text(result.stdout)
     print(result.stdout, flush=True)
     if not re.search(r'OK\s*\(\d+ tests?\)', result.stdout) or 'FAILURES!!!' in result.stdout or 'INSTRUMENTATION_CODE: -1' not in result.stdout:
+        for label, command in [('logcat', ('logcat', '-d', '-v', 'threadtime')),
+                               ('activities', ('shell', 'dumpsys', 'activity', 'activities')),
+                               ('windows', ('shell', 'dumpsys', 'window'))]:
+            diagnostic = adb(*command, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            (ROOT / (name + '-' + label + '.txt')).write_text(diagnostic.stdout)
         raise RuntimeError(name + ' failed')
 
 adb('shell', 'am', 'start', '-W', '-n', PACKAGE + '/' + PACKAGE + '.MainActivity')
