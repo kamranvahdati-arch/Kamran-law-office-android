@@ -26,7 +26,16 @@ def host_files(*commands):
     try:
         assert adb('shell', 'id', '-u', text=True, stdout=subprocess.PIPE).stdout.strip() == '0'
         for command in commands:
-            adb(*command)
+            for attempt in range(3):
+                transfer=subprocess.run(['adb',*command],text=True,stdout=subprocess.PIPE,
+                                        stderr=subprocess.STDOUT,timeout=120)
+                print(transfer.stdout,flush=True)
+                if transfer.returncode==0:break
+                # Retrying is limited to idempotent host-file operations and
+                # transport disconnects. Never retry an instrumentation failure.
+                if attempt==2 or not re.search(r'device offline|device not found|no devices|closed',transfer.stdout,re.I):
+                    raise RuntimeError('Host file transfer failed')
+                transport_uid(True)
     finally:
         transport_uid(False)
     assert adb('shell', 'id', '-u', text=True, stdout=subprocess.PIPE).stdout.strip() == '2000'
