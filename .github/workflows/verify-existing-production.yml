@@ -1,0 +1,76 @@
+name: Verify existing permanent V10 APK
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # API 30 already passed run 35796613148 with these exact APK bytes.
+        # Keep the remaining launch-timeout investigation focused on API 35.
+        api: [35]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: VOKANO-10-permanent-release
+          run-id: 35796036616
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: signed
+      - name: Verify original signed bytes and unchanged application source
+        run: |
+          python3 - <<'PY'
+          import hashlib,json,pathlib,zipfile,subprocess
+          p=json.loads(pathlib.Path('signed/provenance.json').read_text())
+          assert p['source_commit']=='1fc27ec1f9383fd8545279517f471fea85447960'
+          assert p['files']['VOKANO-10-release.apk']=='022652ff25c369022528e45f50bf61719bea1f8b772ff7fd3f74930881ac138d'
+          for name,digest in p['files'].items():
+              assert hashlib.sha256(pathlib.Path('signed',name).read_bytes()).hexdigest()==digest,name
+          with zipfile.ZipFile('signed/VOKANO-10-source.zip') as z:
+              original={n.removeprefix('VOKANO-10/'):z.read(n) for n in z.namelist() if not n.endswith('/')}
+          for name in subprocess.check_output(['git','ls-files'],text=True).splitlines():
+              if name.startswith('app/src/main/') or name in ['app/build.gradle','build.gradle','settings.gradle','gradle.properties']:
+                  assert original[name]==pathlib.Path(name).read_bytes(),name
+          PY
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Build corrected test-only instrumentation
+        run: gradle assembleReleaseAndroidTest -PinstrumentedBuildType=release -PallowTestSigning
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Clean install and full restore of original permanent-signed APK
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            adb wait-for-device
+            adb install signed/VOKANO-10-release.apk
+            adb install signed/instrumentation.apk
+            VOKANO_UPDATED_UI_TEST_APK=app/build/outputs/apk/androidTest/release/app-release-androidTest.apk python3 scripts/run-production-smoke.py
+      - name: Preserve test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: VOKANO-10-final-proof-api-${{ matrix.api }}
+          path: app/build/production-proof/
+          if-no-files-found: error
+          retention-days: 90

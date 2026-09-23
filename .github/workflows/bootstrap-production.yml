@@ -1,0 +1,90 @@
+name: VOKANO permanent production baseline
+on:
+  pull_request:
+    types: [labeled]
+permissions:
+  contents: read
+concurrency:
+  group: vokano-permanent-signing-bootstrap
+  cancel-in-progress: false
+jobs:
+  sign:
+    if: github.event.label.name == 'bootstrap-v10-release' && github.event.pull_request.head.repo.full_name == github.repository && github.run_attempt == 1
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Install recovery encryption dependency
+        run: python3 -m pip install cryptography==46.0.0
+      - name: Create permanent identity once and build exact source
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/bootstrap-release.py
+      - name: Preserve encrypted recovery and signed candidate
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: VOKANO-10-permanent-release
+          path: ${{ runner.temp }}/vokano-release-output/
+          if-no-files-found: error
+          retention-days: 90
+  smoke:
+    needs: sign
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [30, 35]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: VOKANO-10-permanent-release
+          path: signed
+      - name: Verify provenance
+        run: |
+          python3 - <<'PY'
+          import hashlib,json,pathlib,subprocess
+          p=json.loads(pathlib.Path('signed/provenance.json').read_text())
+          assert p['source_commit']==subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+          for name,digest in p['files'].items():
+            assert hashlib.sha256(pathlib.Path('signed',name).read_bytes()).hexdigest()==digest,name
+          PY
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Clean install and restore permanent-signed APK
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          arch: x86_64
+          target: google_apis
+          disable-animations: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            adb wait-for-device
+            adb install signed/VOKANO-10-release.apk
+            adb install signed/instrumentation.apk
+            python3 scripts/run-production-smoke.py
+      - name: Preserve permanent-signed device evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: VOKANO-10-production-proof-api-${{ matrix.api }}
+          path: app/build/production-proof/
+          if-no-files-found: error
+          retention-days: 90

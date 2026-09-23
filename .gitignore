@@ -3,3 +3,20 @@
 local.properties
 **/build/
 *.iml
+
+# Permanent signing material belongs only in secure external storage.
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.key
+.env*
+keystore.properties
+signing.properties
+private-signing/
+
+__pycache__/
+*.pyc
+*private*.pem
+*signing-credentials*
+*recovery-access*

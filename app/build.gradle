@@ -1,5 +1,20 @@
 plugins { id "com.android.application" }
 
+def releaseStore = System.getenv("VOKANO_RELEASE_KEYSTORE")
+def releaseAlias = System.getenv("VOKANO_RELEASE_KEY_ALIAS")
+def releaseStorePassword = System.getenv("VOKANO_RELEASE_STORE_PASSWORD")
+def releaseKeyPassword = System.getenv("VOKANO_RELEASE_KEY_PASSWORD")
+def hasProductionSigning = [releaseStore, releaseAlias, releaseStorePassword, releaseKeyPassword].every { it }
+if (project.hasProperty("requireProductionSigning") && !hasProductionSigning) {
+    throw new GradleException("Production signing requires all VOKANO_RELEASE_* environment variables")
+}
+gradle.taskGraph.whenReady { graph ->
+    if (!hasProductionSigning && !project.hasProperty("allowTestSigning") &&
+            graph.allTasks.any { it.project == project && it.name in ["packageRelease", "packagePreview"] }) {
+        throw new GradleException("No stable release key: pass -PallowTestSigning only for a TEST artifact")
+    }
+}
+
 dependencies {
     implementation 'net.zetetic:sqlcipher-android:4.14.1@aar'
     implementation 'androidx.sqlite:sqlite:2.7.0'
@@ -8,20 +23,40 @@ dependencies {
 }
 
 android {
+    signingConfigs {
+        if (hasProductionSigning) {
+            production {
+                storeFile file(releaseStore)
+                storePassword releaseStorePassword
+                keyAlias releaseAlias
+                keyPassword releaseKeyPassword
+            }
+        }
+    }
+    buildFeatures { buildConfig true }
     namespace "ir.kamranvahdati.lawoffice"
+    testBuildType project.findProperty("instrumentedBuildType") ?: "debug"
     compileSdk 35
     defaultConfig {
         applicationId "ir.kamranvahdati.lawoffice"
         minSdk 24
         targetSdk 35
-        versionCode 9
-        versionName "0.8.1"
-        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        versionCode 13
+        versionName "10.0"
+        manifestPlaceholders = [appLabel: "@string/app_name"]
+        testInstrumentationRunner "ir.kamranvahdati.lawoffice.OfficeTestRunner"
     }
     buildTypes {
         release {
             minifyEnabled false
-            signingConfig signingConfigs.debug
+            signingConfig hasProductionSigning ? signingConfigs.production : signingConfigs.debug
+        }
+        preview {
+            initWith release
+            applicationIdSuffix ".preview"
+            versionNameSuffix "-preview"
+            matchingFallbacks = ["release"]
+            manifestPlaceholders = [appLabel: "وکانو — پیش‌نمایش"]
         }
     }
 }
