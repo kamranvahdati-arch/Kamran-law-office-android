@@ -38,7 +38,8 @@ public class UiFlowSmokeTest {
               .putString("province","تهران").putString("city","تهران")
               .putString("national_id","0013540831").putString("phone","09120000001")
               .putBoolean("notification_permission_prompted",true).putBoolean("lock_enabled",false).commit();
-            MainActivity activity=(MainActivity)instrumentation.startActivitySync(new Intent(context,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            MainActivity activity=(MainActivity)instrumentation.startActivitySync(new Intent(context,MainActivity.class)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK|Intent.FLAG_ACTIVITY_CLEAR_TASK));
             try {
                 instrumentation.waitForIdleSync();
                 assertNotNull(activity.page);assertEquals(View.LAYOUT_DIRECTION_RTL,activity.root.getLayoutDirection());
