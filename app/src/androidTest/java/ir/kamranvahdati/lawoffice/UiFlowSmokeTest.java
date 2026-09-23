@@ -20,6 +20,7 @@ public class UiFlowSmokeTest {
     @Test public void actualScreensAndDialogsOpenInEveryTheme() throws Exception {
         Instrumentation instrumentation=InstrumentationRegistry.getInstrumentation();
         Context context=instrumentation.getTargetContext();
+        assertTrue("Tests must execute as the ordinary application UID",android.os.Process.myUid()>=10000);
         // Every theme is exercised with actual urgent/overdue fixture records, not an empty dashboard.
         // Keep the database file stable: earlier UI tests may have scheduled alarms.
         // Deleting the file while a receiver has a connection produces SQLITE_READONLY_DBMOVED.
@@ -56,7 +57,20 @@ public class UiFlowSmokeTest {
                 instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK);
                 instrumentation.runOnMainSync(activity::settings);instrumentation.waitForIdleSync();
                 capture(instrumentation,activity,theme+"-settings");
-            } finally {instrumentation.runOnMainSync(activity::finish);instrumentation.waitForIdleSync();}
+            } finally {
+                instrumentation.runOnMainSync(activity::finish);
+                // An idle main looper does not mean the asynchronous Activity
+                // destruction has finished. API 35 can otherwise route the next
+                // NEW_TASK intent to this finishing instance (START_DELIVERED_TO_TOP).
+                long deadline=android.os.SystemClock.uptimeMillis()+10000;
+                boolean[] destroyed={false};
+                do {
+                    instrumentation.runOnMainSync(()->destroyed[0]=activity.isDestroyed());
+                    if(destroyed[0])break;
+                    Thread.sleep(50);
+                } while(android.os.SystemClock.uptimeMillis()<deadline);
+                assertTrue("Previous theme Activity must be destroyed before relaunch",destroyed[0]);
+            }
         }
     }
     private void awaitActiveWindow(Instrumentation instrumentation,String label) throws Exception {
