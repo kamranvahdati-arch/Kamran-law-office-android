@@ -54,12 +54,18 @@ public class MainActivity extends Activity {
       else {left=i.getSystemWindowInsetLeft();top=i.getSystemWindowInsetTop();right=i.getSystemWindowInsetRight();bottom=i.getSystemWindowInsetBottom();}
       x.setPadding(left,top+dp(5),right,bottom+dp(5));return i;
     });
+    applySystemBarAppearance();v.requestApplyInsets();
+  }
+  @Override public void onWindowFocusChanged(boolean focused){super.onWindowFocusChanged(focused);if(focused&&prefs!=null)applySystemBarAppearance();}
+  void applySystemBarAppearance(){
     AppTheme colors=AppTheme.from(prefs.getString("theme_id",prefs.getBoolean("dark",false)?AppTheme.DARK:AppTheme.LIGHT));
     getWindow().setStatusBarColor(colors.background);getWindow().setNavigationBarColor(colors.background);
     boolean light=android.graphics.Color.luminance(colors.background)>0.5;
+    View decor=getWindow().getDecorView();int flags=decor.getSystemUiVisibility();
+    if(light)flags|=View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;else flags&=~View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+    if(Build.VERSION.SDK_INT>=26){if(light)flags|=View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;else flags&=~View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;}
+    decor.setSystemUiVisibility(flags);
     if(Build.VERSION.SDK_INT>=30){WindowInsetsController controller=getWindow().getInsetsController();if(controller!=null){int mask=WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS|WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;controller.setSystemBarsAppearance(light?mask:0,mask);}}
-    else {int flags=getWindow().getDecorView().getSystemUiVisibility();if(light)flags|=View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;else flags&=~View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;if(Build.VERSION.SDK_INT>=26){if(light)flags|=View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;else flags&=~View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;}getWindow().getDecorView().setSystemUiVisibility(flags);}
-    v.requestApplyInsets();
   }
   void bindLocation(EditText province,EditText city){
     province.setFocusable(false);city.setFocusable(false);
