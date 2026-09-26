@@ -1,0 +1,48 @@
+name: VOKANO 10.1 permanent-signed upgrade
+on:
+  push:
+    branches: [codex/v10.1]
+    paths: ['release-validation/v101.json']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  production:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [30, 35]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: VOKANO-10-permanent-release
+          run-id: 35796036616
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: original
+      - name: Verify original baseline bytes
+        run: echo '022652ff25c369022528e45f50bf61719bea1f8b772ff7fd3f74930881ac138d  original/VOKANO-10-release.apk' | sha256sum -c
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Verify signatures and production upgrade without reset
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          api-level: ${{ matrix.api }}
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: python3 scripts/test-v101-production.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: VOKANO-10.1-permanent-proof-api-${{ matrix.api }}
+          path: |
+            app/build/permanent-proof/
+            candidate/VOKANO-10.1-release.apk
+          retention-days: 90

@@ -40,8 +40,17 @@ public class V101DomainTest {
     ins.runOnMainSync(()->a.go(MainActivity.COOPERATION,false));ins.waitForIdleSync();assertEquals("همکاری وکلا",a.title.getText().toString());
     ins.runOnMainSync(()->a.go(MainActivity.LEGAL,false));ins.waitForIdleSync();assertEquals(0,a.db.countLegalDocuments());
     ins.runOnMainSync(()->{a.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_SECURE);a.dashboard();});ins.waitForIdleSync();
-    android.graphics.Bitmap screenshot=ins.getUiAutomation().takeScreenshot();assertNotNull(screenshot);java.io.File proof=new java.io.File(c.getExternalFilesDir(null),"v101-proof");assertTrue(proof.isDirectory()||proof.mkdirs());try(java.io.FileOutputStream out=new java.io.FileOutputStream(new java.io.File(proof,"bars-"+theme+".png"))){assertTrue(screenshot.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out));}screenshot.recycle();
-    ins.runOnMainSync(()->{WindowInsets insets=a.root.getRootWindowInsets();assertNotNull(insets);android.graphics.Insets bars=insets.getInsets(WindowInsets.Type.systemBars());assertTrue(a.root.getPaddingTop()>=bars.top);assertTrue(a.root.getPaddingBottom()>=bars.bottom);boolean light=android.graphics.Color.luminance(a.theme.background)>0.5;int appearance=a.getWindow().getInsetsController().getSystemBarsAppearance();assertEquals("theme="+theme+", flags="+a.getWindow().getDecorView().getSystemUiVisibility()+", appearance="+appearance+", focused="+a.hasWindowFocus(),light,(appearance&WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS)!=0);});
+    android.graphics.Bitmap screenshot=ins.getUiAutomation().takeScreenshot();assertNotNull(screenshot);java.io.File proof=new java.io.File(c.getExternalFilesDir(null),"v101-proof");assertTrue(proof.isDirectory()||proof.mkdirs());try(java.io.FileOutputStream out=new java.io.FileOutputStream(new java.io.File(proof,"bars-"+theme+".png"))){assertTrue(screenshot.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out));}// Check rendered system icons as well as requested flags: API 30 reports zero
+    // controller appearance after capture despite rendering legacy light flags.
+    int statusHeight=a.root.getRootWindowInsets().getInsets(WindowInsets.Type.statusBars()).top;
+    boolean lightPixels=android.graphics.Color.luminance(a.theme.background)>0.5;
+    int contrastingPixels=0;
+    for(int y=2;y<statusHeight-2;y++)for(int x=screenshot.getWidth()*3/4;x<screenshot.getWidth()-2;x++){
+     double luminance=android.graphics.Color.luminance(screenshot.getPixel(x,y));
+     if(lightPixels?luminance<0.3:luminance>0.7)contrastingPixels++;
+    }
+    assertTrue("Visible contrasting status icons: "+theme,contrastingPixels>20);screenshot.recycle();
+    ins.runOnMainSync(()->{WindowInsets insets=a.root.getRootWindowInsets();assertNotNull(insets);android.graphics.Insets bars=insets.getInsets(WindowInsets.Type.systemBars());assertTrue(a.root.getPaddingTop()>=bars.top);assertTrue(a.root.getPaddingBottom()>=bars.bottom);boolean light=android.graphics.Color.luminance(a.theme.background)>0.5;int appearance=a.getWindow().getInsetsController().getSystemBarsAppearance();assertEquals("theme="+theme+", flags="+a.getWindow().getDecorView().getSystemUiVisibility()+", appearance="+appearance+", focused="+a.hasWindowFocus(),light,android.os.Build.VERSION.SDK_INT==30?(a.getWindow().getDecorView().getSystemUiVisibility()&View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR)!=0:(appearance&WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS)!=0);});
    }finally{ins.runOnMainSync(a::finish);ins.waitForIdleSync();}
   }
  }
