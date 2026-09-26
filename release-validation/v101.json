@@ -1,0 +1,62 @@
+{
+  "source_commit": "adfd4a55934d1236548f16da848a532f58702e67",
+  "build_run": 36239452423,
+  "baseline_commit": "e3aa48bec758ef9bce0016fa8618fc48001f6450",
+  "certificate_sha256": "26055f09370416e9cd61c08246b80c57367470cdb6873e282b5b6521cf097202",
+  "files": [
+    {
+      "name": "VOKANO-10.1-release.apk",
+      "sha256": "56a4cc3fe16576b0459b47651add0d15d1b537645a7305aec4c00678dc884c30",
+      "bytes": 9619672,
+      "blobs": [
+        "b7f9671859d0b15719a70333f8a2832ced691293",
+        "cc2923eebb87d4c08eb4256213f28af2c7324abe",
+        "f74f0a66dbe4bdecb6bf72458ab29ff5c9f5a514",
+        "c81f00a2d019dcbe00b5026b0b94d18f6148350b",
+        "7dec6a32a047b84f80707172568dccccf42ed17d",
+        "8e64d8dcc671e90b75642c099f92025fa40a48bd",
+        "d38496c983c7a700fb300ff8e9e03fb5a138ddf8",
+        "acd0e950343017abe9e44b7ef87d7a71b5cc9f85",
+        "7038f259bb25d4e10a3248a3c72817e462162b3c",
+        "985695864c9c70b4309a232542714a27a152b5bd",
+        "51ff78f3af6ec7c28cc3c65714472984ba1c5719",
+        "e79d095212c0760da8d1f7b97ba6bb45ac25a8ad",
+        "215da8d51b8ae852d4a9ef8cfe4bf1a1490e08a2",
+        "0d1918c43d92b0094d5098161279bbac7fb38e22",
+        "f3bba5c1510016f001a038278980d24f52c4dd25",
+        "80956987307454f7abaae97489acf192d310a212",
+        "03f1b62c4135c92fbf55353caa33bf24ef77d95d",
+        "9e744eea5dc6277f17859963aae4449ed286fc85",
+        "a51ffe555be34912fe7d4a66bf83e03eb757832f",
+        "8bd6ddeed7626293e09b88b9b5f74fc3952d3b0c",
+        "bb37ce4926f1095fecab8d4dfb843923556effa7",
+        "25043e48034bb51bd151022817ffe51b79da4a1e",
+        "de11c1ba494eb9e4e184c4dc53589554a44016f7",
+        "0f12cefb6c70fe5e67e2d5fa7b38941cd859d2d9",
+        "34ea5bfc0f12979b199b68f6699e4a8add973a9a",
+        "14e00ff97be8b38800625c364010bbd724d0c18e",
+        "96e929cc3472b61fdffe423c543c03e5aac1a4f8",
+        "d23442acc98114550cfddf40698ba9cdf5805830",
+        "813d931f64458991610fa1a6e822ce98d76f783c",
+        "2dd8e8c35f9046f993484164190e8638cfa514e0",
+        "451b2a2ac3f2a4b37bc0dbd1e329d83061b87af7",
+        "46cc4bcb27ddf1c132beae6093d27dcb21185460",
+        "838f14e9c3f9ddd07c908032e394beabd3b098c6",
+        "d3e635339951681d30f641d4c2214348cdfff3c3",
+        "b657a00e75dae4ea19af016b2aa3a013e4beff6b",
+        "109e581bafc50af7794fdf03e430e21c37628b84",
+        "937384eb4e28c1e27a1cf220d3a6a7b9ced4e180"
+      ]
+    },
+    {
+      "name": "instrumentation.apk",
+      "sha256": "9c1c24f02c3b2ea8db7306a2b90f4bf6bac072fd466d07d0fbe502d9a197e1f9",
+      "bytes": 709449,
+      "blobs": [
+        "85dd11f5178dcca591cf65fcf75c5abd8d1ebcc2",
+        "3e65d187463d48f9007f5008830fa5e3e1580ef8",
+        "0f59c0a4292ff03d6a273cf6ce8c491fe3f0a956"
+      ]
+    }
+  ]
+}
