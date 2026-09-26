@@ -44,6 +44,11 @@ jobs:
           target: google_apis
           disable-animations: true
           script: python3 scripts/test-v101-upgrade.py
+      - name: Preserve signing verifier for owner-side existing-key signing
+        if: always()
+        run: |
+          mkdir -p app/build/v101-proof/tools
+          cp "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" app/build/v101-proof/tools/apksigner.jar
       - uses: actions/upload-artifact@v4
         if: always()
         with:

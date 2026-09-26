@@ -18,3 +18,7 @@ adb('install','-r','app/build/outputs/apk/release/app-release.apk')
 adb('install','-r','app/build/outputs/apk/androidTest/release/app-release-androidTest.apk')
 test('V101UpgradeTest','verify')
 test('V101DomainTest')
+
+adb('root')
+adb('wait-for-device')
+adb('pull','/sdcard/Android/data/ir.kamranvahdati.lawoffice/files/v101-proof',str(out/'screenshots'))
