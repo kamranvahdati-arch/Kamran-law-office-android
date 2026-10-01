@@ -1,0 +1,39 @@
+# VOKANO 10.2 execution checkpoint
+
+Status: IN DEVELOPMENT. Not release-ready. Do not install this development checkpoint over real data.
+
+## Verified starting point
+
+- Repository: `kamranvahdati-arch/Kamran-law-office-android` (verified through GitHub and clone).
+- Starting branch: `codex/v10.1`; clean working tree.
+- Starting HEAD: `3df8fdbdb0f290b5231280aa343e20ba03d7a345` (GitHub branch and git agree).
+- Development branch: `codex/v10.2`.
+- Existing database schema: 14; additive migration chain through `OfficeV101.migrate` reviewed before edits.
+- Existing app ID: `ir.kamranvahdati.lawoffice`; versionCode 14 / versionName 10.1.
+- Existing permanent signing configuration preserved. No signing secret has been read or added.
+- GitHub original-production upgrade run `36239832085` queried directly: API 30 and API 35 jobs both success. This is 10.1 evidence, NOT evidence for 10.2.
+
+## Frozen scope
+
+The owner's master execution instruction for 10.2 supersedes conflicting older Master Source decisions, especially attachment-inclusive backups and referral rewards.
+
+1. Preserve ID, signing, all real data and existing healthy features; no reset/destructive migration/release seeds.
+2. Refine existing Persian RTL UI with coherent icons, semantic colors, hierarchy and safe light/dark system insets; preserve approved brand assets.
+3. Exact menu: dashboard/calendar, cases/clients, tasks, persons, accounting, cooperation, lawyer profile, letterhead, legal content, reports, secure backup, SMS, settings, about, contact.
+4. Separate person type from case role; real client count/list versus all persons; extend roles without copying identities.
+5. Server-authoritative verification, account entitlement, device transfer and direct-only referrals. Unavailable backend must be explicit and fail closed for professional collaboration/awards.
+6. Trial 7 days; valid pre-onboarding referral makes TOTAL trial 30 days. Server-issued permanent random `V` + 6 digits; reserved VOKANO owner Kamran Vahdati; owner confirmation required. Total rewards at 1/3/5 successful referrals: 1/6/12 months, not cumulative stacking. Payment finality and fraud controls are server dependencies.
+7. Editable SMS templates and case/role/category recipients through Android SMS app only. No SEND_SMS permission. No invented invitation/download URL.
+8. Encrypted metadata-only backup; safely validated replacement per day, retention 30 days, deletion confined to selected workspace. Provider deletion failure gives warning, not backup failure.
+9. User-selected SAF workspace survives uninstall; stable case UID folders, portable relative references, old attachment preservation, missing-file handling and reinstall/relink/restore.
+10. Professional letterhead, blank printing and subtle VOKANO/vokano.ir footer. Approved owner photo; retain existing contact methods and add clickable vokano.ir.
+11. Help, versioned/timestamped terms/privacy acceptance; versioned legal-content interface, no fabricated legal content or coupling to personal website internals.
+12. API 30/35, clean release, 10.1→10.2 and feasible 10→10.2 installed upgrades, light/dark/RTL, SAF/backup/reinstall, SMS, account/referral tests; existing-key release upgrade and CI before Ready.
+
+## Work allocation and resume
+
+Actual delegated model routing: SOL for UI and build/test tooling; ASTRA for storage/migration and account/security contracts. Parent handles integration and checkpoints. Integration review must use ASTRA before release.
+
+Resume by checking remote/local HEAD, git status/diff, this file and task-specific evidence. Preserve uncommitted work. Do not re-audit or recreate prior features.
+
+Current first incomplete gate: implementation and compilation of 10.2 changes. No 10.2 APK, emulator result, signing compatibility or successful upgrade is claimed here.

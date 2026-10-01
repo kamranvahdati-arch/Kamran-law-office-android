@@ -15,23 +15,13 @@ final class FullBackup {
     static void write(Context context,String bundle,OutputStream destination,String password)throws Exception{
         File archive=File.createTempFile("backup-", ".zip",context.getCacheDir());
         try{
-            JSONObject root=new JSONObject(bundle);root.put("format","VOKANO-FULL-1");root.put("schema",13);
-            LinkedHashSet<String> uris=references(root);
-            File media=new File(context.getFilesDir(),"office-media");File[] owned=media.listFiles();
-            if(owned!=null)for(File file:owned)if(file.isFile()&&file.getName().matches("[0-9a-f]{32}"))uris.add(uri(context,file.getName()).toString());
-            JSONArray files=new JSONArray();
+            JSONObject root=new JSONObject(bundle);root.put("format","VOKANO-LIGHT-1");root.put("schema",OfficeDb.VERSION);
+            // Metadata only; previous installations remain readable through the legacy restore path.
+            for(String ref:references(root))if(!VokanoWorkspace.isReference(Uri.parse(ref)))
+                throw new IOException("پیش از پشتیبان سبک، فایل‌ها را به فضای کاری منتقل کنید");
+            byte[] json=root.toString().getBytes(StandardCharsets.UTF_8);
+            if(json.length>MAX_MANIFEST)throw new IOException("Database backup exceeds supported size");
             try(ZipOutputStream zip=new ZipOutputStream(new BufferedOutputStream(new FileOutputStream(archive)))){
-                for(String original:uris){String id=UUID.randomUUID().toString().replace("-","");
-                    MessageDigest hash=MessageDigest.getInstance("SHA-256");long size;
-                    zip.putNextEntry(new ZipEntry("media/"+id));
-                    try(InputStream in=context.getContentResolver().openInputStream(Uri.parse(original))){
-                        if(in==null)throw new IOException("Unreadable attachment");size=copy(in,zip,hash,Long.MAX_VALUE);
-                    }
-                    zip.closeEntry();if(size==0)throw new IOException("Empty attachment");
-                    files.put(new JSONObject().put("uri",original).put("id",id).put("size",size).put("sha256",hex(hash.digest())));
-                }
-                root.put("media",files);byte[] json=root.toString().getBytes(StandardCharsets.UTF_8);
-                if(json.length>MAX_MANIFEST)throw new IOException("Database backup exceeds supported size");
                 zip.putNextEntry(new ZipEntry("bundle.json"));zip.write(json);zip.closeEntry();
             }
             BackupCipher.encrypt(archive,destination,password);
@@ -61,6 +51,12 @@ final class FullBackup {
                         extracted.put(name.substring(6),file);
                     }else throw new IOException("Unexpected archive entry");
                 }
+            }
+            if(root!=null&&"VOKANO-LIGHT-1".equals(root.optString("format"))){
+                if((root.getInt("schema")<14||root.getInt("schema")>OfficeDb.VERSION)||!extracted.isEmpty())throw new IOException("Unsupported light backup schema");
+                for(String ref:references(root))if(!VokanoWorkspace.isReference(Uri.parse(ref)))throw new IOException("Nonportable backup reference");
+                root.getJSONObject("database").getJSONObject("tables");root.getJSONObject("profile");
+                root.put("format","KLO-BUNDLE-1");prepared=true;return new Prepared(root.toString(),installed);
             }
             if(root==null||!"VOKANO-FULL-1".equals(root.optString("format"))||root.getInt("schema")!=13)throw new IOException("Unsupported backup schema");
             JSONArray files=root.getJSONArray("media");Map<String,String> mapped=new HashMap<>();Set<String> ids=new HashSet<>();

@@ -16,12 +16,20 @@ public final class PrivateMediaProvider extends ContentProvider {
     @Override public String getType(Uri uri) { return "application/octet-stream"; }
     @Override public ParcelFileDescriptor openFile(Uri uri,String mode) throws FileNotFoundException {
         if(!"r".equals(mode) || !uri.getAuthority().equals(getContext().getPackageName()+".media"))throw new FileNotFoundException();
+        if(VokanoWorkspace.isReference(uri)){
+            try{return getContext().getContentResolver().openFileDescriptor(new VokanoWorkspace(getContext()).resolveReference(uri),"r");}
+            catch(Exception e){throw new FileNotFoundException("فایل یافت نشد؛ پوشه فضای کاری را دوباره متصل کنید");}
+        }
         String id=uri.getLastPathSegment();
         if(id==null || !id.matches("[0-9a-f]{32}"))throw new FileNotFoundException();
         File file=new File(new File(getContext().getFilesDir(),"office-media"),id);
         return ParcelFileDescriptor.open(file,ParcelFileDescriptor.MODE_READ_ONLY);
     }
     @Override public Cursor query(Uri uri,String[] projection,String selection,String[] args,String sort) {
+        if(VokanoWorkspace.isReference(uri)){
+            try{return getContext().getContentResolver().query(new VokanoWorkspace(getContext()).resolveReference(uri),projection,selection,args,sort);}
+            catch(Exception e){return null;}
+        }
         String id=uri.getLastPathSegment();
         if(id==null||!id.matches("[0-9a-f]{32}"))return null;
         File file=new File(new File(getContext().getFilesDir(),"office-media"),id);
