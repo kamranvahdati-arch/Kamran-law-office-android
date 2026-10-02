@@ -24,7 +24,7 @@ public class WorkspaceProviderTest {
         // The test APK owns a protected DocumentsProvider. Obtain a real persisted tree grant.
         Intent grant=new Intent().setComponent(new ComponentName(
                 InstrumentationRegistry.getInstrumentation().getContext().getPackageName(),
-                WorkspaceGrantActivity.class.getName())).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                WorkspaceGrantActivity.class.getName())).putExtra("reset_fixture",true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         context.startActivity(grant);
         Uri tree=DocumentsContract.buildTreeDocumentUri(WorkspaceTestProvider.AUTHORITY,"root");
         SecurityException pending=null;
@@ -34,17 +34,14 @@ public class WorkspaceProviderTest {
             catch(SecurityException awaiting){pending=awaiting;Thread.sleep(100);}
         }
         if(pending!=null)throw pending;
-        resetFixture();
         new VokanoWorkspace(context).select(tree,Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
     }
     @After public void cleanup()throws Exception{
         if(context==null)return;
-        try{resetFixture();}finally{context.getSharedPreferences("workspace",0).edit().putString("tree",previousTree).commit();}
+        context.getSharedPreferences("workspace",0).edit().putString("tree",previousTree).commit();
     }
-    private void resetFixture()throws Exception{
-        Uri tree=DocumentsContract.buildTreeDocumentUri(WorkspaceTestProvider.AUTHORITY,"root");
-        DocumentsContract.deleteDocument(context.getContentResolver(),DocumentsContract.buildDocumentUriUsingTree(tree,"root"));
-    }
+    // Reset occurs inside the test-provider APK before issuing the tree grant.
+    // Deleting the granted root through DocumentsContract revokes that grant by design.
     private JSONObject bundle()throws Exception{try(OfficeDb db=new OfficeDb(context)){JSONObject data=new JSONObject(db.exportJson());data.getJSONObject("tables").put("case_attachments",new JSONArray());return new JSONObject().put("database",data).put("profile",new JSONObject());}}
     private File backup(JSONObject json)throws Exception{File f=File.createTempFile("fixture-",".vkb",context.getCacheDir());try(OutputStream out=new FileOutputStream(f)){FullBackup.write(context,json.toString(),out,"fixture-password");}return f;}
     private List<String> names()throws Exception{
