@@ -10,7 +10,9 @@ import java.security.MessageDigest;
 
 /** Validate the persisted replacement before any deletion. Failed deletes are a nonfatal warning. */
 final class WorkspaceBackups {
-    static boolean save(Context c,File complete,String password,String day)throws Exception{
+    static synchronized boolean save(Context c,File complete,String password,String day)throws Exception{
+        if(day==null||!day.matches("\\d{4}-\\d{2}-\\d{2}"))throw new IOException("Invalid backup date");
+        SimpleDateFormat dateCheck=new SimpleDateFormat("yyyy-MM-dd",Locale.ROOT);dateCheck.setLenient(false);dateCheck.parse(day);
         Uri folder=new VokanoWorkspace(c).resolve("Backup",true);
         String name="VOKANO-"+day+"-"+UUID.randomUUID()+".vkb";
         Uri target=DocumentsContract.createDocument(c.getContentResolver(),folder,"application/octet-stream",name);
@@ -22,7 +24,7 @@ final class WorkspaceBackups {
             }
             byte[] expected;try(InputStream in=new FileInputStream(complete)){expected=digest(in);}
             try(InputStream in=c.getContentResolver().openInputStream(target)){if(!MessageDigest.isEqual(expected,digest(in)))throw new IOException("Persisted backup integrity failure");}
-            try(InputStream in=c.getContentResolver().openInputStream(target);FullBackup.Prepared p=FullBackup.read(c,in,password)){p.commit();}
+            try(InputStream in=c.getContentResolver().openInputStream(target);FullBackup.Prepared p=FullBackup.read(c,in,password)){/* Validated in an isolated database; never restore live data. */}
             valid=true;
         }finally{if(!valid)try{DocumentsContract.deleteDocument(c.getContentResolver(),target);}catch(Exception ignored){}}
         boolean warning=false;

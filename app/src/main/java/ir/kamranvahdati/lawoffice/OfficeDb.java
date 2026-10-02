@@ -24,10 +24,26 @@ final class OfficeDb extends SQLiteOpenHelper {
     static final String ENCRYPTED_NAME = "law_office_encrypted_v9.db";
     static final String DATABASE_NAME = ENCRYPTED_NAME;
     static final int VERSION = 15;
+    private boolean validationOnly;
 
     OfficeDb(Context context) {
         super(context, DATABASE_NAME, DatabaseKey.read(context), null, VERSION, 0, null, null, false);
         System.loadLibrary("sqlcipher");
+    }
+
+    /** Isolated memory-only schema for validating an archive; never opens or writes live records. */
+    private OfficeDb(Context context,byte[] temporaryKey) {
+        super(context, null, temporaryKey, null, VERSION, 0, null, null, false);
+        validationOnly=true;
+        System.loadLibrary("sqlcipher");
+    }
+    static void validateBackup(Context context,String json,boolean requireAllTables)throws Exception {
+        if(requireAllTables){JSONObject tables=new JSONObject(json).getJSONObject("tables");
+            for(String table:backupTables())if(!(tables.opt(table) instanceof JSONArray))throw new Exception("Incomplete backup table: "+table);
+        }
+        byte[] key=new byte[32];new java.security.SecureRandom().nextBytes(key);
+        try(OfficeDb isolated=new OfficeDb(context,key)){isolated.importJson(json);}
+        finally{java.util.Arrays.fill(key,(byte)0);}
     }
 
     @Override public void onConfigure(SQLiteDatabase db) {
@@ -67,7 +83,7 @@ final class OfficeDb extends SQLiteOpenHelper {
         migrateV13(db);
         OfficeV101.migrate(db);
         migrateV15(db);
-        if (BuildConfig.DEBUG) seed(db);
+        if (BuildConfig.DEBUG && !validationOnly) seed(db);
     }
 
     @Override public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
@@ -112,7 +128,20 @@ final class OfficeDb extends SQLiteOpenHelper {
         addColumn(db,"clients","is_client INTEGER NOT NULL DEFAULT 1");
     }
     int countPersons(){return scalar("SELECT COUNT(*) FROM clients WHERE deleted_at IS NULL",null);}
-    void setClientMembership(long id,boolean client){ContentValues v=new ContentValues();v.put("is_client",client?1:0);getWritableDatabase().update("clients",v,"id=?",new String[]{String.valueOf(id)});}
+    void setClientMembership(long id,boolean client){
+        SQLiteDatabase db=getWritableDatabase();db.beginTransaction();try{
+            String[] args={String.valueOf(id)};
+            if(!client){
+                String[] links={"SELECT 1 FROM cases WHERE client_id=? AND deleted_at IS NULL LIMIT 1",
+                    "SELECT 1 FROM case_clients cc JOIN cases c ON c.id=cc.case_id WHERE cc.client_id=? AND cc.deleted_at IS NULL AND c.deleted_at IS NULL LIMIT 1",
+                    "SELECT 1 FROM contract_clients cc JOIN representation_contracts c ON c.id=cc.contract_id WHERE cc.client_id=? AND cc.deleted_at IS NULL AND c.deleted_at IS NULL LIMIT 1"};
+                for(String sql:links)try(Cursor found=db.rawQuery(sql,args)){if(found.moveToFirst())throw new IllegalArgumentException("این شخص در پرونده یا قرارداد فعال موکل است؛ ابتدا ارتباط موکل را اصلاح کنید");}
+            }
+            ContentValues values=new ContentValues();values.put("is_client",client?1:0);values.put("updated_at",now());
+            if(db.update("clients",values,"id=? AND deleted_at IS NULL",args)!=1)throw new IllegalArgumentException("شخص یافت نشد");
+            db.setTransactionSuccessful();
+        }finally{db.endTransaction();}
+    }
     String caseUid(long id){try(Cursor c=getReadableDatabase().rawQuery("SELECT uid FROM cases WHERE id=?",new String[]{String.valueOf(id)})){if(!c.moveToFirst())throw new IllegalArgumentException("پرونده یافت نشد");return c.getString(0);}}
 
     private void migrateV13(SQLiteDatabase db) {

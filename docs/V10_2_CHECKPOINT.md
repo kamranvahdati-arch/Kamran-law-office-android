@@ -37,3 +37,15 @@ Actual delegated model routing: SOL for UI and build/test tooling; ASTRA for sto
 Resume by checking remote/local HEAD, git status/diff, this file and task-specific evidence. Preserve uncommitted work. Do not re-audit or recreate prior features.
 
 Current first incomplete gate: implementation and compilation of 10.2 changes. No 10.2 APK, emulator result, signing compatibility or successful upgrade is claimed here.
+
+## Continuation evidence (2026-10-02)
+
+- Local development checkpoint `6722e433ce968893df1d05fb8db0eb7f3d693789` has tree `cdbe70aa2d42c9114d1e32773f8d5f1e8beacfab`.
+- The identical tree was preserved remotely at `a464df8a53e4e765243ed198938630fa9b11f9b7` on `codex/v10.2`. Git push has no local credential; the authenticated GitHub connector created the remote checkpoint. Commit IDs differ; source trees were compared exactly.
+- Additive 14→15 schema introduces client membership while preserving ambiguous legacy standalone identities. New Person entries are not clients until designated or linked as clients.
+- Account/verification/referral and independent legal-content contracts are checked in. Pure Java account-policy smoke checks passed in the preceding execution; no live backend behavior is claimed.
+- Original 10.1 APK recovered and SHA-256 checked: `56a4cc3fe16576b0459b47651add0d15d1b537645a7305aec4c00678dc884c30`.
+- Existing recovery identity decrypted in memory; certificate SHA-256 verified: `26055f09370416e9cd61c08246b80c57367470cdb6873e282b5b6521cf097202`. No new key created or private material committed. This is prerequisite evidence, not a successful 10.2 signed build.
+- Preserved interrupted edits: MainActivity menu/dashboard/SMS; version bump; AutoBackup/Job/manifest. UI and storage integration remain in progress.
+- Focused review found workspace authority/path validation and backup relational-validation gaps; these are being corrected before retention or release is accepted.
+- Local emulator acceleration unavailable; API 30/35 execution requires CI or another emulator-capable environment. SDK/Gradle setup and V102 upgrade harness are in progress.

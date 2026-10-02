@@ -40,4 +40,15 @@ public class V102StorageTest {
    }finally{db.getWritableDatabase().endTransaction();}
   }
  }
+ @Test public void linkedClientCannotBeHiddenAndMissingPersonCannotBeChanged(){
+  Context c=InstrumentationRegistry.getInstrumentation().getTargetContext();try(OfficeDb db=new OfficeDb(c)){
+   db.getWritableDatabase().beginTransaction();try{
+    long id=db.addClient("موکل آزمون رابطه","","","","","","");OfficeDb.CaseRecord record=new OfficeDb.CaseRecord();record.title="پرونده آزمون رابطه";record.clientId=id;db.addCase(record);
+    boolean rejected=false;try{db.setClientMembership(id,false);}catch(IllegalArgumentException expected){rejected=true;}assertTrue(rejected);
+    try(android.database.Cursor row=db.getReadableDatabase().rawQuery("SELECT is_client FROM clients WHERE id=?",new String[]{String.valueOf(id)})){assertTrue(row.moveToFirst());assertEquals(1,row.getInt(0));}
+    rejected=false;try{db.setClientMembership(-1,true);}catch(IllegalArgumentException expected){rejected=true;}assertTrue(rejected);
+   }finally{db.getWritableDatabase().endTransaction();}
+  }
+ }
+
 }

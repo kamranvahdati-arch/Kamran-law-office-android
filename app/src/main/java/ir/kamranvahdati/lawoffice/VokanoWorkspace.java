@@ -26,7 +26,7 @@ final class VokanoWorkspace {
         Uri tree=Uri.parse(value);return DocumentsContract.buildDocumentUriUsingTree(tree,DocumentsContract.getTreeDocumentId(tree));
     }
     Uri resolve(String relative,boolean directories)throws Exception{
-        if(relative==null||!relative.matches("[A-Za-z0-9._/-]+"))throw new IOException("Invalid workspace path");
+        if(relative==null||!relative.matches("[A-Za-z0-9._/-]+")||relative.endsWith("/"))throw new IOException("Invalid workspace path");
         Uri node=root();for(String part:relative.split("/")){if(part.isEmpty()||part.equals(".")||part.equals(".."))throw new IOException("Invalid path");node=child(node,part,directories);if(node==null)throw new FileNotFoundException("فایل در فضای کاری یافت نشد: "+relative);}return node;
     }
     private Uri child(Uri parent,String name,boolean create)throws Exception{
@@ -56,9 +56,28 @@ final class VokanoWorkspace {
             return reference(directory+"/"+name);
         }catch(Exception e){try{DocumentsContract.deleteDocument(context.getContentResolver(),target);}catch(Exception ignored){}throw e;}
     }
-    Uri reference(String path){return new Uri.Builder().scheme("content").authority(context.getPackageName()+".media").appendPath("workspace").appendPath(path).build();}
-    static boolean isReference(Uri uri){return "content".equals(uri.getScheme())&&uri.getAuthority()!=null&&uri.getAuthority().endsWith(".media")&&uri.getPathSegments().size()==2&&"workspace".equals(uri.getPathSegments().get(0));}
-    Uri resolveReference(Uri uri)throws Exception{return resolve(uri.getPathSegments().get(1),false);}
+    private static boolean validPath(String path){
+        if(path==null||!path.matches("[A-Za-z0-9._/-]+"))return false;
+        String[] parts=path.split("/",-1);
+        if(parts.length<2||!Arrays.asList("Cases","Pleadings","Accounting","Exports").contains(parts[0]))return false;
+        for(String part:parts)if(part.isEmpty()||part.equals(".")||part.equals(".."))return false;
+        return true;
+    }
+    Uri reference(String path){if(!validPath(path))throw new IllegalArgumentException("Invalid workspace reference");return canonical(path);}
+    private static Uri canonical(String path){return new Uri.Builder().scheme("content").authority(BuildConfig.APPLICATION_ID+".media").appendPath("workspace").appendPath(path).build();}
+    static boolean isReference(Uri uri){
+        if(uri==null||!"content".equals(uri.getScheme())||!(BuildConfig.APPLICATION_ID+".media").equals(uri.getAuthority())||uri.getPathSegments().size()!=2||!"workspace".equals(uri.getPathSegments().get(0)))return false;
+        String path=uri.getPathSegments().get(1);return validPath(path)&&canonical(path).equals(uri);
+    }
+    Uri resolveReference(Uri uri)throws Exception{if(!isReference(uri))throw new IOException("Invalid workspace reference");return resolve(uri.getPathSegments().get(1),false);}
+    void migrateProfileMedia()throws Exception{
+        android.content.SharedPreferences prefs=context.getSharedPreferences("office_profile",0);
+        for(String key:new String[]{"photo","logo"}){
+            String value=prefs.getString(key,"");if(value.isEmpty()||isReference(Uri.parse(value)))continue;
+            Uri copied=copy(Uri.parse(value),"Exports/Profile");
+            if(!prefs.edit().putString(key,copied.toString()).commit())throw new IOException("Cannot save profile workspace reference");
+        }
+    }
     void migrateAttachments(OfficeDb db)throws Exception{
         try(Cursor c=db.getReadableDatabase().rawQuery("SELECT a.id,a.content_uri,c.uid FROM case_attachments a JOIN cases c ON c.id=a.case_id",null)){
             while(c.moveToNext()){ensureCase(c.getString(2));Uri old=Uri.parse(c.getString(1));if(isReference(old))continue;

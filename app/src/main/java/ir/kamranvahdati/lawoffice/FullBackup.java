@@ -55,7 +55,7 @@ final class FullBackup {
             if(root!=null&&"VOKANO-LIGHT-1".equals(root.optString("format"))){
                 if((root.getInt("schema")<14||root.getInt("schema")>OfficeDb.VERSION)||!extracted.isEmpty())throw new IOException("Unsupported light backup schema");
                 for(String ref:references(root))if(!VokanoWorkspace.isReference(Uri.parse(ref)))throw new IOException("Nonportable backup reference");
-                root.getJSONObject("database").getJSONObject("tables");root.getJSONObject("profile");
+                OfficeDb.validateBackup(context,root.getJSONObject("database").toString(),true);root.getJSONObject("profile");
                 root.put("format","KLO-BUNDLE-1");prepared=true;return new Prepared(root.toString(),installed);
             }
             if(root==null||!"VOKANO-FULL-1".equals(root.optString("format"))||root.getInt("schema")!=13)throw new IOException("Unsupported backup schema");
