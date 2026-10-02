@@ -4,6 +4,7 @@
         <!-- Test APK only. Isolated provider exercises real ContentResolver/document I/O. -->
         <provider android:name="ir.kamranvahdati.lawoffice.WorkspaceTestProvider"
             android:authorities="ir.kamranvahdati.lawoffice.storagefixture"
-            android:exported="true" android:grantUriPermissions="true" />
+            android:exported="true" android:grantUriPermissions="true"
+            android:permission="android.permission.MANAGE_DOCUMENTS" />
     </application>
 </manifest>

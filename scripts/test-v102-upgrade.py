@@ -28,7 +28,10 @@ def test(name, phase=None):
     result = adb(*args, package + '.test/' + package + '.OfficeTestRunner')
     (out / (name.replace('#', '-') + '-' + (phase or 'suite') + '.txt')).write_text(result)
     print(result, flush=True)
-    assert 'OK (' in result and 'FAILURES' not in result and 'INSTRUMENTATION_FAILED' not in result
+    passed = 'OK (' in result and 'FAILURES' not in result and 'INSTRUMENTATION_FAILED' not in result and 'Process crashed' not in result
+    if not passed:
+        (out / 'failure-logcat.txt').write_text(adb('logcat', '-d', '-v', 'threadtime'))
+    assert passed, 'Instrumentation failed; see captured logcat'
 
 apksigner = pathlib.Path(os.environ['ANDROID_HOME']) / 'build-tools/35.0.0/apksigner'
 certs = []
@@ -47,7 +50,7 @@ adb('shell', 'am', 'force-stop', package)
 adb('install', '-r', str(candidate))
 adb('install', '-r', str(candidate_test))
 test('V102UpgradeTest', 'verify')
-for scoped in ['V102StorageTest', 'WorkspaceProviderTest', 'ThemeAndProfileAssetsTest', 'UiFlowSmokeTest']:
+for scoped in ['V102StorageTest', 'WorkspaceProviderTest', 'ThemeAndProfileAssetsTest', 'UiFlowSmokeTest', 'V101DomainTest#lightAndDarkScreensRespectBarsAndExposeScopedRoutes', 'V102UiTest']:
     test(scoped)
 after = adb('shell', 'dumpsys', 'package', package)
 (out / 'after-package.txt').write_text(after)

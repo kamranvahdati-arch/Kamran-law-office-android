@@ -10,6 +10,8 @@ import java.security.MessageDigest;
 
 /** Validate the persisted replacement before any deletion. Failed deletes are a nonfatal warning. */
 final class WorkspaceBackups {
+    /** Serializes live restore, file relinking and automatic/manual snapshot lifetimes. */
+    static final Object OPERATION_LOCK=new Object();
     static synchronized boolean save(Context c,File complete,String password,String day)throws Exception{
         if(day==null||!day.matches("\\d{4}-\\d{2}-\\d{2}"))throw new IOException("Invalid backup date");
         SimpleDateFormat dateCheck=new SimpleDateFormat("yyyy-MM-dd",Locale.ROOT);dateCheck.setLenient(false);dateCheck.parse(day);

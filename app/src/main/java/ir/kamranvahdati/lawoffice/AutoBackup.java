@@ -33,7 +33,7 @@ final class AutoBackup {
         Context app=c.getApplicationContext();
         if(running||!enabled(app)||WorkspaceBackups.today().equals(app.getSharedPreferences(PREF,0).getString("last_day",""))){if(finished!=null)finished.run();return;}
         running=true;
-        new Thread(()->{File complete=null;final String backupDay=WorkspaceBackups.today();try{
+        new Thread(()->{File complete=null;final String backupDay=WorkspaceBackups.today();try{synchronized(WorkspaceBackups.OPERATION_LOCK){
             android.content.SharedPreferences prefs=app.getSharedPreferences(PREF,0);
             KeyStore store=KeyStore.getInstance("AndroidKeyStore");store.load(null);Cipher cipher=Cipher.getInstance("AES/GCM/NoPadding");cipher.init(Cipher.DECRYPT_MODE,store.getKey(KEY,null),new GCMParameterSpec(128,Base64.decode(prefs.getString("iv",""),Base64.NO_WRAP)));
             String password=new String(cipher.doFinal(Base64.decode(prefs.getString("credential",""),Base64.NO_WRAP)),"UTF-8");
@@ -42,13 +42,13 @@ final class AutoBackup {
             if(!enabled(app))return;
             boolean warning=WorkspaceBackups.save(app,complete,password,backupDay);
             prefs.edit().putString("last_day",backupDay).putString("status",warning?"پشتیبان ذخیره شد؛ حذف نسخه‌های قدیمی نیازمند اقدام دستی است":"پشتیبان روزانه ذخیره شد").commit();
-        }catch(Exception failure){app.getSharedPreferences(PREF,0).edit().putString("status","پشتیبان خودکار انجام نشد؛ اتصال فضای کاری، فضای آزاد و تنظیمات رمز را بررسی کنید").commit();}
+        }}catch(Exception failure){app.getSharedPreferences(PREF,0).edit().putString("status","پشتیبان خودکار انجام نشد؛ اتصال فضای کاری، فضای آزاد و تنظیمات رمز را بررسی کنید").commit();}
         finally{if(complete!=null)complete.delete();synchronized(AutoBackup.class){running=false;}if(finished!=null)finished.run();}},"vokano-daily-backup").start();
     }
     private static String bundle(Context c,OfficeDb db)throws Exception{
         JSONObject root=new JSONObject().put("format","KLO-BUNDLE-1").put("app_version",BuildConfig.VERSION_NAME).put("database",new JSONObject(db.exportJson()));
         JSONObject profile=new JSONObject();android.content.SharedPreferences prefs=c.getSharedPreferences("office_profile",0);
-        for(String key:new String[]{"name","lawyer_level","professional_body","center","bar_branch","license","national_id","province","city","phone","office_phone","address","website","theme_id","categories","subjects","work_actions","personal_categories","deadline_types","sms_templates","instagram_url","telegram_url","photo","logo","font_scale","keep_screen_on","notifications_enabled","profile_complete"}){Object value=prefs.getAll().get(key);if(value!=null)profile.put(key,value);}
+        for(String key:new String[]{"name","lawyer_level","professional_body","center","bar_branch","license","national_id","province","city","phone","office_phone","address","website","theme_id","categories","subjects","work_actions","personal_categories","deadline_types","sms_templates","instagram_url","telegram_url","photo","logo","font_scale","keep_screen_on","notifications_enabled","profile_complete","terms_version","privacy_version","terms_10_2_accepted_at"}){Object value=prefs.getAll().get(key);if(value!=null)profile.put(key,value);}
         return root.put("profile",profile).toString();
     }
 }

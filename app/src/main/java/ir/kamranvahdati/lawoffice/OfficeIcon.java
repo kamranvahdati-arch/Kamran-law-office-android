@@ -15,7 +15,7 @@ final class OfficeIcon extends Drawable {
     OfficeIcon(String kind,int color){this.kind=kind;pen.setColor(color);pen.setStyle(Paint.Style.STROKE);pen.setStrokeWidth(1.8f);pen.setStrokeCap(Paint.Cap.ROUND);pen.setStrokeJoin(Paint.Join.ROUND);}
     @Override public void draw(Canvas c){Rect bounds=getBounds();c.save();c.translate(bounds.left,bounds.top);c.scale(bounds.width()/24f,bounds.height()/24f);
         switch(kind){
-            case "person":circle(c,12,8,3.1f);arc(c,5,18,12,12,19,18);break;
+            case "person":circle(c,12,8,3.1f);arc(c,5,19,19,19);break;
             case "case":rect(c,3,7,21,19);line(c,9,7,9,5);line(c,9,5,15,5);line(c,15,5,15,7);line(c,3,12,21,12);break;
             case "check":circle(c,12,12,8.5f);line(c,8,12,11,15);line(c,11,15,16,9);break;
             case "alert":circle(c,12,12,8.5f);line(c,12,7.5f,12,12.5f);circle(c,12,16,0.6f);break;
@@ -28,7 +28,7 @@ final class OfficeIcon extends Drawable {
     private void line(Canvas c,float x,float y,float xx,float yy){c.drawLine(x,y,xx,yy,pen);}
     private void rect(Canvas c,float x,float y,float xx,float yy){c.drawRoundRect(x,y,xx,yy,2,2,pen);}
     private void circle(Canvas c,float x,float y,float r){c.drawCircle(x,y,r,pen);}
-    private void arc(Canvas c,float left,float top,float right,float bottom,float endX,float endY){Path p=new Path();p.moveTo(left,endY);p.cubicTo(left,top,right,top,right,endY);c.drawPath(p,pen);}
+    private void arc(Canvas c,float left,float bottom,float right,float endY){Path p=new Path();p.moveTo(left,bottom);p.cubicTo(left,12,right,12,right,endY);c.drawPath(p,pen);}
     @Override public void setAlpha(int alpha){pen.setAlpha(alpha);invalidateSelf();}
     @Override public void setColorFilter(ColorFilter filter){pen.setColorFilter(filter);invalidateSelf();}
     @Override public int getOpacity(){return PixelFormat.TRANSLUCENT;}

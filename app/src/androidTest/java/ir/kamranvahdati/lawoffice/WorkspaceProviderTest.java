@@ -2,6 +2,8 @@ package ir.kamranvahdati.lawoffice;
 
 import static org.junit.Assert.*;
 import android.content.Context;
+import android.content.Intent;
+import android.content.ComponentName;
 import android.database.Cursor;
 import android.net.Uri;
 import android.provider.DocumentsContract;
@@ -18,13 +20,31 @@ public class WorkspaceProviderTest {
     private Context context;private String previousTree;
     @Before public void prepare()throws Exception{
         context=InstrumentationRegistry.getInstrumentation().getTargetContext();
-        resetFixture();
         previousTree=context.getSharedPreferences("workspace",0).getString("tree",null);
-        // Deterministic provider grant fixture. OS picker/persisted-grant lifecycle needs device flow separately.
-        context.getSharedPreferences("workspace",0).edit().putString("tree",DocumentsContract.buildTreeDocumentUri(WorkspaceTestProvider.AUTHORITY,"root").toString()).commit();
+        // The test APK owns a protected DocumentsProvider. Obtain a real persisted tree grant.
+        Intent grant=new Intent().setComponent(new ComponentName(
+                InstrumentationRegistry.getInstrumentation().getContext().getPackageName(),
+                WorkspaceGrantActivity.class.getName())).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        context.startActivity(grant);
+        Uri tree=DocumentsContract.buildTreeDocumentUri(WorkspaceTestProvider.AUTHORITY,"root");
+        SecurityException pending=null;
+        for(int attempt=0;attempt<50;attempt++){
+            try{context.getContentResolver().takePersistableUriPermission(tree,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_WRITE_URI_PERMISSION);pending=null;break;}
+            catch(SecurityException awaiting){pending=awaiting;Thread.sleep(100);}
+        }
+        if(pending!=null)throw pending;
+        resetFixture();
+        new VokanoWorkspace(context).select(tree,Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
     }
-    @After public void cleanup()throws Exception{context.getSharedPreferences("workspace",0).edit().putString("tree",previousTree).commit();resetFixture();}
-    private void resetFixture()throws Exception{DocumentsContract.deleteDocument(context.getContentResolver(),DocumentsContract.buildDocumentUri(WorkspaceTestProvider.AUTHORITY,"root"));}
+    @After public void cleanup()throws Exception{
+        if(context==null)return;
+        try{resetFixture();}finally{context.getSharedPreferences("workspace",0).edit().putString("tree",previousTree).commit();}
+    }
+    private void resetFixture()throws Exception{
+        Uri tree=DocumentsContract.buildTreeDocumentUri(WorkspaceTestProvider.AUTHORITY,"root");
+        DocumentsContract.deleteDocument(context.getContentResolver(),DocumentsContract.buildDocumentUriUsingTree(tree,"root"));
+    }
     private JSONObject bundle()throws Exception{try(OfficeDb db=new OfficeDb(context)){JSONObject data=new JSONObject(db.exportJson());data.getJSONObject("tables").put("case_attachments",new JSONArray());return new JSONObject().put("database",data).put("profile",new JSONObject());}}
     private File backup(JSONObject json)throws Exception{File f=File.createTempFile("fixture-",".vkb",context.getCacheDir());try(OutputStream out=new FileOutputStream(f)){FullBackup.write(context,json.toString(),out,"fixture-password");}return f;}
     private List<String> names()throws Exception{
