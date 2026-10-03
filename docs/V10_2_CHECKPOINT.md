@@ -36,7 +36,7 @@ Actual delegated model routing: SOL for UI and build/test tooling; ASTRA for sto
 
 Resume by checking remote/local HEAD, git status/diff, this file and task-specific evidence. Preserve uncommitted work. Do not re-audit or recreate prior features.
 
-Current first incomplete gate: implementation and compilation of 10.2 changes. No 10.2 APK, emulator result, signing compatibility or successful upgrade is claimed here.
+Current first incomplete gate: finish scoped emulator regressions for the latest source, then sign the exact APK with the existing identity and run original-production 10.1→10.2. A test-signed 10.2 APK has compiled in CI; it is not approved for real data or delivery.
 
 ## Continuation evidence (2026-10-02)
 
@@ -49,3 +49,13 @@ Current first incomplete gate: implementation and compilation of 10.2 changes. N
 - Preserved interrupted edits: MainActivity menu/dashboard/SMS; version bump; AutoBackup/Job/manifest. UI and storage integration remain in progress.
 - Focused review found workspace authority/path validation and backup relational-validation gaps; these are being corrected before retention or release is accepted.
 - Local emulator acceleration unavailable; API 30/35 execution requires CI or another emulator-capable environment. SDK/Gradle setup and V102 upgrade harness are in progress.
+
+## Executed CI and fixes
+
+- Run `37016447235` (remote `b67f483f5ef3725b08986ca26a2b6eee9448ece1`): real APK/instrumentation builds passed. Installed-upgrade and basic storage checks passed before the test DocumentsProvider crashed. Entire workflow failed; no all-tests success.
+- Run `37016785544` (remote `7cc9d11029253448030324e30bdf74496cd9cda5`): build passed, workspace test grants failed. Protected test provider and real persistable grant setup corrected in local `1c1af80`.
+- ASTRA scoped integration review fixed migration/restore/automatic-backup concurrency using a shared lock (`4bf4f98`), then fixed settings rollback if SQLite transaction completion fails (`432e008`). No simulated disk-full transaction-commit failure was performed.
+- Run `37060407779` (remote `002b32bae3ae4f473e45da2c58e9535860b83151`): clean install plus actual target-only uninstall/reinstall, new tree grant, light backup restore and file-byte preservation passed on API 30 and 35. Upgrade fixtures passed, but provider suite setup deleted its granted root and thereby revoked its own grant. Test fixture corrected in `4b4d110`; assertions retained.
+- Run `37061122573` (remote `c6891c3de19a8dcb0954b9d034e0cb7931963515`): API 30/V10 full upgrade+storage+UI suite succeeded when last checked; other jobs pending at that check. Query run directly before claiming the final result.
+- Final source refinements awaiting the next run: invitation fields use account configuration contract; explicit daily automatic backup/Keystore test. No backend adapter, live verification, entitlement grant, referral lookup success or anti-fraud service exists in this Android release.
+- Original-production workflow `v102-production.yml` is prepared but MUST NOT be described as executed until `release-validation/v102.json` is populated from an actually signed candidate and its workflow has passed. Never use a test-signed APK as the real-data update.

@@ -86,6 +86,23 @@ public class WorkspaceProviderTest {
             try(java.util.zip.ZipFile archive=new java.util.zip.ZipFile(zip)){assertEquals(1,archive.size());assertNotNull(archive.getEntry("bundle.json"));}
         }finally{complete.delete();zip.delete();}
     }
+    @Test public void automaticBackupStoresOneEncryptedSnapshotPerDay()throws Exception{
+        AutoBackup.disable(context);
+        try{
+            VokanoWorkspace workspace=new VokanoWorkspace(context);
+            try(OfficeDb db=new OfficeDb(context)){workspace.migrateAttachments(db);}
+            workspace.migrateProfileMedia();
+            AutoBackup.enable(context,"automatic-fixture-password");
+            long until=android.os.SystemClock.uptimeMillis()+60000;
+            while(!WorkspaceBackups.today().equals(context.getSharedPreferences("vokano_auto_backup",0).getString("last_day",""))&&android.os.SystemClock.uptimeMillis()<until)Thread.sleep(100);
+            assertEquals(AutoBackup.status(context),WorkspaceBackups.today(),context.getSharedPreferences("vokano_auto_backup",0).getString("last_day",""));
+            List<String> saved=names();assertEquals(1,saved.size());
+            assertNotEquals("automatic-fixture-password",context.getSharedPreferences("vokano_auto_backup",0).getString("credential",""));
+            java.util.concurrent.CountDownLatch finished=new java.util.concurrent.CountDownLatch(1);
+            AutoBackup.start(context,finished::countDown);assertTrue(finished.await(5,java.util.concurrent.TimeUnit.SECONDS));
+            assertEquals(saved,names());
+        }finally{AutoBackup.disable(context);}
+    }
     @Test public void referencesRejectForeignAuthorityAndTraversalAndMissingIsExplicit()throws Exception{
         VokanoWorkspace workspace=new VokanoWorkspace(context);Uri valid=workspace.reference("Cases/fixture/file");assertTrue(VokanoWorkspace.isReference(valid));
         assertFalse(VokanoWorkspace.isReference(valid.buildUpon().authority("attacker.media").build()));

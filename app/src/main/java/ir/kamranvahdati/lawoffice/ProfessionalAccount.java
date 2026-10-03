@@ -40,6 +40,9 @@ public final class ProfessionalAccount {
         public final License license = License.UNAVAILABLE;
         public final Integer remainingDays = null;
         public final String referralCode = null;
+        // Populated only by a future reviewed authenticated account/configuration adapter.
+        public final String verifiedDisplayName = null;
+        public final String officialInvitationUrl = null;
         private Snapshot() { }
         public boolean canUseProfessionalCollaboration() { return false; }
         public String displayText() { return UNAVAILABLE_MESSAGE; }
