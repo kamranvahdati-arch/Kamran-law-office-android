@@ -15,6 +15,7 @@ import java.util.List;
 
 @RunWith(AndroidJUnit4.class)
 public class V102UiTest {
+ private static boolean hasRenderedContent(Bitmap bitmap){int visible=0;for(int y=bitmap.getHeight()/5;y<bitmap.getHeight()*4/5;y+=12)for(int x=bitmap.getWidth()/5;x<bitmap.getWidth()*4/5;x+=12)if((bitmap.getPixel(x,y)&0x00ffffff)!=0)visible++;return visible>20;}
  @Test public void scopedScreensAndSmsHandoff() throws Exception {
   Instrumentation ins=InstrumentationRegistry.getInstrumentation();Context c=ins.getTargetContext();
   assertEquals(android.content.pm.PackageManager.PERMISSION_DENIED,c.checkSelfPermission("android.permission.SEND_SMS"));
@@ -25,7 +26,7 @@ public class V102UiTest {
     for(int route:new int[]{MainActivity.HOME,MainActivity.SMS,MainActivity.BACKUP,MainActivity.LETTER,MainActivity.ABOUT,MainActivity.CONTACT}){
      ins.runOnMainSync(()->{a.getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);a.go(route,false);});ins.waitForIdleSync();
      assertEquals(View.LAYOUT_DIRECTION_RTL,a.root.getLayoutDirection());assertTrue(a.page.getChildCount()>0);
-     Bitmap bitmap=ins.getUiAutomation().takeScreenshot();assertNotNull(bitmap);File folder=new File(c.getExternalFilesDir(null),"qa/v102");assertTrue(folder.isDirectory()||folder.mkdirs());
+     Bitmap bitmap=null;for(int attempt=0;attempt<10;attempt++){Thread.sleep(150);bitmap=ins.getUiAutomation().takeScreenshot();if(bitmap!=null&&hasRenderedContent(bitmap))break;if(bitmap!=null)bitmap.recycle();bitmap=null;}assertNotNull("Screen content must render before capture",bitmap);File folder=new File(c.getExternalFilesDir(null),"qa/v102");assertTrue(folder.isDirectory()||folder.mkdirs());
      try(FileOutputStream out=new FileOutputStream(new File(folder,theme+"-route-"+route+".png"))){assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG,100,out));}finally{bitmap.recycle();}
     }
     final Intent[] captured={null};
