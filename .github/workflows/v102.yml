@@ -6,6 +6,19 @@ on:
 permissions:
   contents: read
 jobs:
+  account-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Verify account policy and unavailable backend contract
+        run: |
+          mkdir -p app/build/account-contract
+          javac -d app/build/account-contract app/src/main/java/ir/kamranvahdati/lawoffice/ProfessionalAccount.java app/src/main/java/ir/kamranvahdati/lawoffice/ProfessionalAccountApi.java app/src/test/java/ir/kamranvahdati/lawoffice/ProfessionalAccountSmokeTest.java
+          java -cp app/build/account-contract ir.kamranvahdati.lawoffice.ProfessionalAccountSmokeTest
   clean-install:
     runs-on: ubuntu-latest
     strategy:

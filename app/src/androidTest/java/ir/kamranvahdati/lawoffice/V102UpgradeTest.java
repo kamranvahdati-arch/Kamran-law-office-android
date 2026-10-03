@@ -24,11 +24,15 @@ public class V102UpgradeTest {
   Context c=InstrumentationRegistry.getInstrumentation().getTargetContext();
   String phase=InstrumentationRegistry.getArguments().getString("upgrade_phase","");
   Assume.assumeTrue("seed".equals(phase)||"verify".equals(phase));
+  // Read the installed target: BuildConfig constants are inlined from the test build.
+  android.content.pm.PackageInfo installed=c.getPackageManager().getPackageInfo(c.getPackageName(),0);
+  String installedVersion=installed.versionName;
+  assertEquals("ir.kamranvahdati.lawoffice",installed.packageName);
+  assertEquals(0,installed.applicationInfo.flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE);
   File expected=new File(c.getFilesDir(),"v102-upgrade-before.json");
   try(OfficeDb db=new OfficeDb(c)){
    if("seed".equals(phase)){
-    assertTrue(BuildConfig.VERSION_NAME,BuildConfig.VERSION_NAME.equals("10.0")||BuildConfig.VERSION_NAME.equals("10.1"));
-    assertFalse(BuildConfig.DEBUG);
+    assertTrue(installedVersion,"10.0".equals(installedVersion)||"10.1".equals(installedVersion));
     assertEquals(0,db.countClients());
     long person=db.addClient("شخص آزمون ارتقا","0013540831","پدر","1360/01/01","09120000001","نشانی حفظ شود","یادداشت حفظ شود");
     OfficeDb.CaseRecord record=new OfficeDb.CaseRecord();record.title="پرونده حفظ داده";record.clientId=person;record.province="فارس";record.judicialCity="شهر ثبت شده";long caseId=db.addCase(record);
@@ -56,7 +60,7 @@ public class V102UpgradeTest {
     JSONObject snapshot=new JSONObject(db.exportJson());snapshot.put("attachment_hash",hash(c,uri));snapshot.put("previous_schema",schema);snapshot.put("settings",new JSONObject(c.getSharedPreferences("office_profile",0).getAll()));
     try(FileOutputStream out=new FileOutputStream(expected)){out.write(snapshot.toString().getBytes(StandardCharsets.UTF_8));}
    }else{
-    assertEquals("10.2",BuildConfig.VERSION_NAME);assertTrue(expected.isFile());
+    assertEquals("10.2",installedVersion);assertTrue(expected.isFile());
     JSONObject before=new JSONObject(read(expected)),actual=new JSONObject(db.exportJson());
     JSONObject oldTables=before.getJSONObject("tables"),newTables=actual.getJSONObject("tables");
     for(Iterator<String> tables=oldTables.keys();tables.hasNext();){String table=tables.next();JSONArray oldRows=oldTables.getJSONArray(table),newRows=newTables.getJSONArray(table);
