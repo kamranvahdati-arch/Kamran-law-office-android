@@ -22,10 +22,19 @@ public class WorkspaceProviderTest {
         context=InstrumentationRegistry.getInstrumentation().getTargetContext();
         previousTree=context.getSharedPreferences("workspace",0).getString("tree",null);
         // The test APK owns a protected DocumentsProvider. Obtain a real persisted tree grant.
+        // A previous persisted grant can succeed before the reset Activity runs.
+        // Wait for an explicit acknowledgement of this reset, not for permission reuse.
+        java.util.concurrent.CountDownLatch fixtureReady=new java.util.concurrent.CountDownLatch(1);
+        android.os.ResultReceiver ready=new android.os.ResultReceiver(null){
+            @Override protected void onReceiveResult(int code,android.os.Bundle data){
+                if(code==android.app.Activity.RESULT_OK)fixtureReady.countDown();
+            }
+        };
         Intent grant=new Intent().setComponent(new ComponentName(
                 InstrumentationRegistry.getInstrumentation().getContext().getPackageName(),
-                WorkspaceGrantActivity.class.getName())).putExtra("reset_fixture",true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                WorkspaceGrantActivity.class.getName())).putExtra("reset_fixture",true).putExtra("fixture_ready",ready).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         context.startActivity(grant);
+        assertTrue("Fixture reset and grant did not complete",fixtureReady.await(10,java.util.concurrent.TimeUnit.SECONDS));
         Uri tree=DocumentsContract.buildTreeDocumentUri(WorkspaceTestProvider.AUTHORITY,"root");
         SecurityException pending=null;
         for(int attempt=0;attempt<50;attempt++){
